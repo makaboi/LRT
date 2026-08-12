@@ -23,6 +23,7 @@ from .artwork import (
 )
 from .combat import (
     CombatConfig,
+    CombatDifficulty,
     CombatEngine,
     CombatResult,
     ghorak,
@@ -41,8 +42,23 @@ from .content import (
     STAR_ART,
 )
 from .models import Character, GameState
+from .profile import ACHIEVEMENTS, PlayerProfile, ProfileManager
 from .savegame import SaveManager
+from .settings import SettingsManager, UserSettings
 from .ui import Color, TerminalUI
+
+
+DIFFICULTY_MODES = {
+    "story": CombatDifficulty.STORY,
+    "ranger": CombatDifficulty.NORMAL,
+    "shadow": CombatDifficulty.HARD,
+}
+
+DIFFICULTY_DESCRIPTIONS = {
+    "story": "Story — gentler damage; focus on choices and atmosphere",
+    "ranger": "Ranger — the intended tactical balance",
+    "shadow": "Shadow — aggressive openings and stricter tactics for veterans",
+}
 
 
 class Game:
@@ -52,25 +68,50 @@ class Game:
         *,
         saves: SaveManager | None = None,
         rng: random.Random | None = None,
+        settings_manager: SettingsManager | None = None,
+        user_settings: UserSettings | None = None,
+        profile: ProfileManager | None = None,
+        difficulty: CombatDifficulty | str | None = None,
     ) -> None:
         self.ui = ui
         self.saves = saves or SaveManager()
         self.rng = rng or random.Random()
-        self.combat = CombatEngine(ui, self.rng)
+        self.settings_manager = settings_manager
+        self.user_settings = user_settings or UserSettings(
+            color_mode="on" if ui.color else "off",
+            sound=ui.sound_enabled,
+            text_speed=ui.text_speed if isinstance(ui.text_speed, str) else "normal",
+            reduced_motion=ui.reduced_motion,
+            screen_reader=ui.screen_reader,
+        )
+        self.profile = profile
+        selected_difficulty = difficulty or DIFFICULTY_MODES[self.user_settings.difficulty]
+        self.combat = CombatEngine(ui, self.rng, difficulty=selected_difficulty)
         self.state: GameState | None = None
 
     def run(self) -> None:
         while True:
             self.ui.clear()
-            self.ui.art(TITLE_ART_EXPANDED, Color.SILVER)
+            self.ui.art(
+                TITLE_ART_EXPANDED,
+                Color.SILVER,
+                alt_text="An eight-pointed star hangs over a road descending between dark hills.",
+            )
+            self.ui.write(
+                "R O A D S   B E N E A T H   T H E   S H A D O W".center(min(72, self.ui.width)),
+                color=Color.YELLOW,
+                bold=True,
+            )
             self.ui.write("Part I — The Black Rider's Letter".center(68), color=Color.DIM)
             options: list[str] = []
             routes: list[str] = []
             if self.state is not None and not self.state.ending:
                 options.append(f"Continue {self.state.character.name}'s journey")
                 routes.append("continue")
-            options.extend(["Begin a new journey", "Load a journey", "How to play", "Settings", "Quit"])
-            routes.extend(["new", "load", "help", "settings", "quit"])
+            options.extend(
+                ["Begin a new journey", "Load a journey", "Chronicle", "How to play", "Settings", "Quit"]
+            )
+            routes.extend(["new", "load", "chronicle", "help", "settings", "quit"])
             choice = self.ui.choose("MAIN MENU", options)
             route = routes[choice - 1]
             if route == "continue":
@@ -81,6 +122,8 @@ class Game:
             elif route == "load":
                 if self._load_menu():
                     self._run_journey()
+            elif route == "chronicle":
+                self._show_chronicle()
             elif route == "help":
                 self._how_to_play()
             elif route == "settings":
@@ -90,6 +133,15 @@ class Game:
                 return
 
     def _new_journey(self) -> bool:
+        if self.state is not None and not self.state.ending:
+            current_name = self.state.character.name
+            confirm = self.ui.choose(
+                f"Discard {current_name}'s unfinished journey?",
+                ["Keep the current journey", "Discard it and begin a new journey"],
+            )
+            if confirm != 2:
+                self.ui.write("Your current journey has been kept.", color=Color.YELLOW)
+                return False
         self.ui.clear()
         self.ui.title("WHO WALKS THE ROAD?")
         self.ui.narrate(
@@ -203,7 +255,11 @@ class Game:
     def _chapter_one_intro(self) -> None:
         assert self.state is not None
         self.ui.clear()
-        self.ui.art(PRANCING_PONY_EXTERIOR_ART, Color.BLUE)
+        self.ui.art(
+            PRANCING_PONY_EXTERIOR_ART,
+            Color.BLUE,
+            alt_text="The Prancing Pony glows through heavy rain beneath a crooked sign.",
+        )
         self.ui.title("PART I — THE BLACK RIDER'S LETTER")
         self.ui.write("Chapter 1 — Blood at the Prancing Pony", color=Color.RED, bold=True)
         self.ui.write()
@@ -216,9 +272,13 @@ class Game:
             "Rain pours across Bree as you enter the Prancing Pony. A warm fire burns in the stone "
             "hearth, yet nobody sings. Nobody laughs. A wounded stranger rises beside the fire."
         )
-        self.ui.art(PRANCING_PONY_INTERIOR_ART, Color.YELLOW)
+        self.ui.art(
+            PRANCING_PONY_INTERIOR_ART,
+            Color.YELLOW,
+            alt_text="A low fire burns inside a silent, crowded inn.",
+        )
         self.ui.write('"Calenor sent me," he whispers.', color=Color.CYAN)
-        self.ui.art(STAR_ART, Color.SILVER)
+        self.ui.art(STAR_ART, Color.SILVER, alt_text="A broken silver pendant shaped as an eight-pointed star.")
         self.ui.narrate(
             "He presses a sealed letter and a broken eight-pointed silver star into your hands. One "
             "ray has been snapped away. The pendant is unnaturally cold."
@@ -229,7 +289,11 @@ class Game:
             "A horn answers from beyond Bree's gate, and two Orc scouts force through the inn's "
             "doors beside their captain. He points a curved sword at you."
         )
-        self.ui.art(ORC_ATTACK_ART, Color.RED)
+        self.ui.art(
+            ORC_ATTACK_ART,
+            Color.RED,
+            alt_text="An arrow shatters the window as three Orc scouts force their way inside.",
+        )
         self.ui.write('"The silver star. Take its bearer alive."', color=Color.RED, bold=True)
         self.ui.narrate(
             "A traveler named Mara steps between you and the Orcs and draws two short blades."
@@ -333,7 +397,11 @@ class Game:
             character.mara_trust -= 2
             character.corruption += 1
             self.state.flags["abandoned_mara"] = True
-            self.ui.art(BREE_STREETS_ART, Color.BLUE)
+            self.ui.art(
+                BREE_STREETS_ART,
+                Color.BLUE,
+                alt_text="Rain-dark lanes wind between Bree's leaning roofs and closed shutters.",
+            )
             self.ui.narrate(
                 "You vault the stable wall and run into the rain. At the eastern bend, every lamp "
                 "goes out at once. A tall rider sits motionless on a black horse, listening. The "
@@ -529,7 +597,11 @@ class Game:
         assert self.state is not None
         if not self.state.flags.get("bree_map_seen"):
             self.ui.clear()
-            self.ui.art(BREE_STREETS_ART, Color.BLUE)
+            self.ui.art(
+                BREE_STREETS_ART,
+                Color.BLUE,
+                alt_text="Rain-dark lanes wind between Bree's leaning roofs and closed shutters.",
+            )
             self.ui.title("BREE BEFORE MIDNIGHT")
             self.ui.narrate(
                 "The rain weakens to a cold mist. Bree has drawn in upon itself: shutters closed, "
@@ -767,7 +839,11 @@ class Game:
         character = self.state.character
         if not self.state.flags.get("north_gate_intro_seen"):
             self.ui.clear()
-            self.ui.art(NORTH_GATE_ART, Color.SILVER)
+            self.ui.art(
+                NORTH_GATE_ART,
+                Color.SILVER,
+                alt_text="Bree's barred north gate opens onto an empty road beneath the hills.",
+            )
             self.ui.title("THE THIRD STONE")
             self.ui.narrate(
                 "The north gate leans into the storm like an old man against a door. Tobin lifts the "
@@ -814,7 +890,12 @@ class Game:
             if method is None:
                 return False
             if method == 1:
-                self.ui.art(THIRD_STONE_DISCOVERY_ART, Color.CYAN)
+                self.ui.art(
+                    THIRD_STONE_DISCOVERY_ART,
+                    Color.CYAN,
+                    alt_text="The eight-pointed star answers a hidden mark cut into an ancient boundary stone.",
+                )
+                self.ui.sound("discovery")
                 if character.will >= 3:
                     character.hope += 1
                     self.ui.narrate(
@@ -829,7 +910,11 @@ class Game:
                         color=Color.MAGENTA,
                     )
             elif method == 2 and "ranger_token" in character.inventory:
-                self.ui.art(THIRD_STONE_DISCOVERY_ART, Color.GREEN)
+                self.ui.art(
+                    THIRD_STONE_DISCOVERY_ART,
+                    Color.GREEN,
+                    alt_text="Three weathered boundary stones reveal an old Ranger sign.",
+                )
                 self.state.flags["opened_cache_as_ranger"] = True
                 character.hope += 1
                 self.ui.narrate("The oak-leaf fits a hidden notch. Calenor meant Edrin's token to open this without waking the star.")
@@ -886,7 +971,11 @@ class Game:
         assert self.state is not None
         character = self.state.character
         self.ui.clear()
-        self.ui.art(BREE_STREETS_ART, Color.BLUE)
+        self.ui.art(
+            BREE_STREETS_ART,
+            Color.BLUE,
+            alt_text="Bree fades behind the company as the eastern road enters the wild.",
+        )
         self.ui.title("OUT THROUGH THE HEDGE")
         self.ui.narrate(
             "You leave by a shepherd's cut in the northern hedge before the watch can raise the gate. "
@@ -939,7 +1028,11 @@ class Game:
         character = self.state.character
         if not self.state.flags.get("midgewater_camp_setup"):
             self.ui.clear()
-            self.ui.art(MIDGEWATER_RUINS_ART, Color.GREEN)
+            self.ui.art(
+                MIDGEWATER_RUINS_ART,
+                Color.GREEN,
+                alt_text="Broken stone rises from the reeds and black water of the Midgewater marshes.",
+            )
             self.ui.title("A FIRE WITHOUT FLAME")
             self.ui.narrate(
                 "Near dawn you shelter in the lee of an ancient standing stone. Mara makes a smokeless "
@@ -1018,7 +1111,11 @@ class Game:
         assert self.state is not None
         character = self.state.character
         if not self.state.flags.get("missing_watchman_intro_seen"):
-            self.ui.art(MIDGEWATER_RUINS_ART, Color.SILVER)
+            self.ui.art(
+                MIDGEWATER_RUINS_ART,
+                Color.SILVER,
+                alt_text="A drowned watch post leans over mist and marsh water.",
+            )
             self.ui.title("THE LOST WHISTLE")
             self.ui.narrate(
                 "The whistle leads to a fallen watch-stone surrounded by water. Ned Barley hangs inside "
@@ -1118,8 +1215,16 @@ class Game:
         assert self.state is not None
         character = self.state.character
         self.ui.clear()
-        self.ui.art(ORC_TRACKER_INTRO_ART, Color.RED)
-        self.ui.art(MARSH_WARG_INTRO_ART, Color.YELLOW)
+        self.ui.art(
+            ORC_TRACKER_INTRO_ART,
+            Color.RED,
+            alt_text="A scarred Orc tracker lowers a barbed spear in the reeds.",
+        )
+        self.ui.art(
+            MARSH_WARG_INTRO_ART,
+            Color.YELLOW,
+            alt_text="A lean marsh warg emerges beside its handler, teeth pale in the fog.",
+        )
         enemies = [orc_scout("Ghorak's Tracker"), marsh_warg()]
         surprise = any(
             self.state.flags.get(flag)
@@ -1177,7 +1282,12 @@ class Game:
         character = self.state.character
         if not self.state.flags.get("wayhouse_opened"):
             self.ui.clear()
-            self.ui.art(ANCIENT_ROAD_DISCOVERY_ART, Color.SILVER)
+            self.ui.art(
+                ANCIENT_ROAD_DISCOVERY_ART,
+                Color.SILVER,
+                alt_text="A buried stone road descends beneath the ruined wayhouse.",
+            )
+            self.ui.sound("discovery")
             self.ui.title("THE ROAD BENEATH THE ROAD")
             self.ui.narrate(
                 "Calenor's map ends at a hill that should be empty. At sunrise the joined star-key "
@@ -1226,7 +1336,11 @@ class Game:
                     "The counterweight yields. The star remains dark, but stone teeth announce your "
                     "arrival all through the hill. Mara says nothing about stealth; none remains."
                 )
-            self.ui.art(FINAL_RUINS_BATTLE_ART, Color.BLUE)
+            self.ui.art(
+                FINAL_RUINS_BATTLE_ART,
+                Color.BLUE,
+                alt_text="Moonlight cuts across the shattered arches of an ancient northern fortress.",
+            )
             self.state.flags["wayhouse_opened"] = True
             self.state.visit("wayhouse_entry")
 
@@ -1309,6 +1423,7 @@ class Game:
                     character.heal(character.max_hp)
                     character.focus = character.max_focus
                     self.state.flags["accepted_star_power"] = True
+                    self.ui.sound("corruption")
                     self.ui.write("Cold strength fills you. Your Health is restored.", color=Color.MAGENTA)
                 else:
                     character.corruption += 1
@@ -1324,7 +1439,11 @@ class Game:
         assert self.state is not None
         character = self.state.character
         self.ui.clear()
-        self.ui.art(GHORAK_ASH_HAND_INTRO_ART, Color.RED)
+        self.ui.art(
+            GHORAK_ASH_HAND_INTRO_ART,
+            Color.RED,
+            alt_text="Ghorak Ash-Hand stands in scorched armor with a vast cleaver raised.",
+        )
         self.ui.narrate(
             "Ghorak Ash-Hand steps from the eastern arch wearing Calenor's broken sword across his "
             "back. Orcs fan out behind him. His pale gauntlet is dusted with the silver of shattered "
@@ -1367,10 +1486,15 @@ class Game:
         else:
             character.corruption += 1
             self.state.flags["used_star_in_final"] = True
+            self.ui.sound("corruption")
             surprise = True
             enemies[0].hp -= 4
 
-        self.ui.art(FINAL_RUINS_BATTLE_ART, Color.YELLOW)
+        self.ui.art(
+            FINAL_RUINS_BATTLE_ART,
+            Color.YELLOW,
+            alt_text="The companions make their final stand among firelit ruins.",
+        )
         result = self.combat.run(
             self.state,
             enemies,
@@ -1406,7 +1530,11 @@ class Game:
         assert self.state is not None
         character = self.state.character
         self.ui.clear()
-        self.ui.art(BLACK_RIDER_CLIFFHANGER_ART, Color.MAGENTA)
+        self.ui.art(
+            BLACK_RIDER_CLIFFHANGER_ART,
+            Color.MAGENTA,
+            alt_text="A hooded Black Rider watches from the ridge as the silver star opens a road below.",
+        )
         self.ui.title("THE EIGHTH HORN")
         self.ui.sound("danger")
         self.ui.narrate(
@@ -1439,22 +1567,184 @@ class Game:
         if character.tobin_trust >= 2 and self.state.flags.get("ned_survived"):
             self.ui.write('Tobin nocks his last arrow. "Ned is safe. I finish the watch."', color=Color.CYAN)
             self.state.flags["tobin_chose_to_continue"] = True
+        elif self.state.flags.get("ned_survived"):
+            self.ui.write(
+                'Tobin looks back toward the marsh. "Ned lives. I will see him home before I choose another road."',
+                color=Color.CYAN,
+            )
+            self.state.flags["tobin_returns_with_ned"] = True
+        elif character.tobin_trust >= 2:
+            self.ui.write(
+                'Tobin lays Ned\'s broken lantern at the threshold. "I could not save him. I can still finish his watch."',
+                color=Color.CYAN,
+            )
+            self.state.flags["tobin_carries_neds_watch"] = True
         else:
-            self.ui.write("Tobin remains at the threshold to hold the road—or to decide whether he can follow you.", color=Color.CYAN)
+            self.ui.write(
+                "Tobin remains at the threshold with Ned's lantern, grief standing where trust should have been.",
+                color=Color.CYAN,
+            )
+            self.state.flags["tobin_stays_at_threshold"] = True
         self.ui.write()
         self.ui.write("You lift Calenor's broken sword and descend as the Black Rider enters the wayhouse.", color=Color.SILVER, bold=True)
-        self.state.add_journal("Calenor is alive beneath the Weather Hills. He says the silver star is the last seal, not a key.")
-        self.state.complete_quest("Discover what happened to Calenor")
-        self.state.complete_quest("Keep the silver star from the servants of the Shadow")
-        self.state.add_quest("Descend the Dead Road and reach Calenor")
-        self.state.flags["part_one_complete"] = True
-        self.state.play_minutes += 3
-        if self.state.flags.get("defeated_by_ghorak"):
-            self._set_ending("shadow_claim")
-        elif character.mara_trust >= 0:
-            self._set_ending("fellowship")
+
+        # Keep this transition safe to replay from a save made at the scene boundary.
+        # Journal and quest helpers are already idempotent; the flag also protects time
+        # and any future one-time Part II hand-off effects.
+        if not self.state.flags.get("cliffhanger_resolved"):
+            self.state.add_journal(
+                "Calenor is alive beneath the Weather Hills. He says the silver star is the last seal, not a key."
+            )
+            self.state.complete_quest("Discover what happened to Calenor")
+            self.state.complete_quest("Keep the silver star from the servants of the Shadow")
+            self.state.add_quest("Descend the Dead Road and reach Calenor")
+            self.state.flags["part_one_complete"] = True
+            self.state.play_minutes += 3
+            self._prepare_part_two_consequences()
+            self.state.flags["cliffhanger_resolved"] = True
+
+        self._set_ending(self.state.ending or self._determine_ending())
+
+    def _discovery_flags(self) -> tuple[str, ...]:
+        """Return the major truths the player can carry beyond Part I."""
+        assert self.state is not None
+        discoveries = (
+            "found_ranger_cipher",
+            "identified_ghorak_mark",
+            "heard_edrins_last_words",
+            "read_edrin_countdown",
+            "calenor_may_live",
+            "asked_about_adoption",
+            "learned_dead_road_map",
+            "learned_eighth_heir",
+        )
+        return tuple(flag for flag in discoveries if self.state.flags.get(flag))
+
+    def _knows_hidden_road(self) -> bool:
+        """The archive map only becomes actionable when another clue reveals how to read it."""
+        assert self.state is not None
+        flags = self.state.flags
+        can_read_map = any(
+            flags.get(flag)
+            for flag in (
+                "found_ghorak_flank",
+                "found_ranger_cipher",
+                "asked_about_adoption",
+                "learned_eighth_heir",
+            )
+        )
+        return bool(flags.get("learned_dead_road_map") and can_read_map)
+
+    def _determine_ending(self) -> str:
+        """Resolve Part I from moral, relational, rescue, and discovery consequences."""
+        assert self.state is not None
+        character = self.state.character
+        flags = self.state.flags
+
+        shadow_dominant = character.corruption >= max(3, character.hope + 2)
+        embraced_shadow_twice = bool(
+            flags.get("accepted_star_power")
+            and flags.get("used_star_in_final")
+            and character.corruption > character.hope
+        )
+        if flags.get("defeated_by_ghorak") or shadow_dominant or embraced_shadow_twice:
+            return "shadow_claim"
+
+        if self._knows_hidden_road() and character.hope >= character.corruption:
+            return "hidden_road"
+
+        fellowship_holds = bool(
+            flags.get("ned_survived")
+            and character.mara_trust >= 1
+            and character.tobin_trust >= 1
+            and character.hope >= character.corruption
+        )
+        if fellowship_holds:
+            return "fellowship"
+        return "keeper_of_secrets"
+
+    def _prepare_part_two_consequences(self) -> None:
+        """Record stable, player-readable hand-off flags for the next episode."""
+        assert self.state is not None
+        character = self.state.character
+        flags = self.state.flags
+
+        flags["part_two_hidden_route_known"] = self._knows_hidden_road()
+        flags["part_two_star_resisted"] = character.hope > character.corruption
+        flags["part_two_shadow_foothold"] = character.corruption > character.hope
+        flags["part_two_companions_united"] = bool(
+            flags.get("ned_survived")
+            and character.mara_trust >= 2
+            and character.tobin_trust >= 2
+        )
+        flags["part_two_ned_safe"] = bool(flags.get("ned_survived"))
+        flags["part_two_neds_watch_continues"] = bool(
+            not flags.get("ned_survived") and character.tobin_trust >= 2
+        )
+        flags["part_two_mara_distrusts_player"] = character.mara_trust < 0
+
+    def _ending_copy(self) -> tuple[str, str]:
+        """Return ending prose, replacing the obsolete early-exit Hidden Road copy."""
+        assert self.state is not None and self.state.ending is not None
+        if self.state.ending == "hidden_road":
+            return (
+                "THE HIDDEN ROAD",
+                "The archive's silver map answers the clues you gathered along the way. An unmarked "
+                "stair opens beneath the broken crown, forcing the Black Rider toward the longer road. "
+                "You have not escaped the Shadow—but your discoveries have bought the company a path "
+                "Ghorak never knew existed.",
+            )
+        return ENDING_TEXT[self.state.ending]
+
+    def _ending_breakdown(self) -> list[tuple[str, str]]:
+        """Explain the decisions that created this ending and their Part II payoff."""
+        assert self.state is not None
+        character = self.state.character
+        flags = self.state.flags
+
+        if character.hope > character.corruption:
+            moral = "Hope prevailed; the star answered your bonds without owning them."
+        elif character.corruption > character.hope:
+            moral = "The star found a foothold in the power and fear you accepted."
         else:
-            self._set_ending("keeper_of_secrets")
+            moral = "Hope and corruption remain evenly matched; the next choice may decide them."
+
+        if character.mara_trust >= 2:
+            mara = "She follows by choice, not merely because of her oath to Calenor."
+        elif character.mara_trust >= 0:
+            mara = "She continues warily; your actions earned cooperation, but not faith."
+        else:
+            mara = "She no longer trusts the bearer of the star and watches you as closely as the road."
+
+        if flags.get("ned_survived") and character.tobin_trust >= 2:
+            watch = "Ned lives, and Tobin follows after entrusting his friend to the Bree watch."
+        elif flags.get("ned_survived"):
+            watch = "Ned lives, but Tobin returns with him; one companion will not enter the Dead Road."
+        elif character.tobin_trust >= 2:
+            watch = "Ned fell, and Tobin carries his watch into the dark in Ned's name."
+        else:
+            watch = "Ned fell, and Tobin remains behind with grief your choices did not heal."
+
+        discoveries = len(self._discovery_flags())
+        if flags.get("part_two_hidden_route_known"):
+            truth = f"{discoveries} major truths recovered; the archive clues revealed a hidden descent."
+        elif discoveries:
+            truth = f"{discoveries} major truth{'s' if discoveries != 1 else ''} recovered, but the buried map remains incomplete."
+        else:
+            truth = "No optional truths recovered; you enter Part II without a map of the enemy's design."
+
+        if flags.get("defeated_ghorak"):
+            battle = "Ghorak was defeated; Calenor's broken sword and the initiative pass to you."
+        else:
+            battle = "Ghorak defeated you; the Black Rider marked the threshold before you escaped below."
+
+        return [
+            ("Moral path", moral),
+            ("Mara", mara),
+            ("Tobin and Ned", watch),
+            ("Lost-kingdom lore", truth),
+            ("Final stand", battle),
+        ]
 
     def _set_ending(self, ending: str) -> None:
         assert self.state is not None
@@ -1463,20 +1753,73 @@ class Game:
 
     def _show_ending(self) -> None:
         assert self.state is not None and self.state.ending is not None
-        title, text = ENDING_TEXT[self.state.ending]
+        unlocked = self._record_completed_journey()
+        title, text = self._ending_copy()
         self.ui.clear()
         self.ui.title(title)
         self.ui.narrate(text, color=Color.SILVER)
         character = self.state.character
         self.ui.write()
-        self.ui.write(f"Hope: {character.hope}   Corruption: {character.corruption}   Mara's trust: {character.mara_trust}")
-        self.ui.write(f"Health: {character.hp}/{character.max_hp}   Quests discovered: {len(self.state.quests)}")
+        self.ui.title("THE ROAD YOU MADE")
+        for label, consequence in self._ending_breakdown():
+            self.ui.write(f"{label}: {consequence}")
+        self.ui.write()
+        self.ui.write(
+            f"Hope {character.hope}   Corruption {character.corruption}   "
+            f"Mara {character.mara_trust:+d}   Tobin {character.tobin_trust:+d}",
+            color=Color.DIM,
+        )
+        self.ui.write("These consequences are carried into Part II.", color=Color.YELLOW, bold=True)
         self.ui.write()
         self.ui.write("PART I COMPLETE", color=Color.YELLOW, bold=True)
         self.ui.narrate("The road continues in Part II: The Dead Road.", color=Color.CYAN)
+        if unlocked:
+            self.ui.write()
+            self.ui.title("ACHIEVEMENTS UNLOCKED")
+            for achievement in unlocked:
+                self.ui.write(f"* {ACHIEVEMENTS[achievement]}", color=Color.GREEN)
         choice = self.ui.choose("What next?", ["Save this journey", "Return to the main menu"])
         if choice == 1:
             self._save_menu()
+
+    def _record_completed_journey(self) -> list[str]:
+        """Record a completed route exactly once, even if its save is reopened."""
+
+        assert self.state is not None
+        if self.profile is None or self.state.flags.get("profile_recorded"):
+            return []
+        try:
+            unlocked = self.profile.record(self.state)
+        except OSError:
+            return []
+        self.state.flags["profile_recorded"] = True
+        return unlocked
+
+    def _show_chronicle(self) -> None:
+        profile = self.profile.load() if self.profile is not None else PlayerProfile()
+        self.ui.clear()
+        self.ui.title("THE TRAVELER'S CHRONICLE")
+        if profile.completed_runs == 0:
+            self.ui.narrate(
+                "No completed road has yet been written here. Finish Part I to record an ending, "
+                "an origin, and any achievements earned along the way."
+            )
+            self.ui.pause()
+            return
+
+        self.ui.write(f"Completed journeys: {profile.completed_runs}", color=Color.CYAN, bold=True)
+        origins = ", ".join(origin.replace("_", " ").title() for origin in profile.origins_completed)
+        self.ui.write(f"Origins completed: {origins or 'None'}")
+        self.ui.write()
+        self.ui.write("Endings witnessed", color=Color.YELLOW, bold=True)
+        for ending, count in sorted(profile.endings.items()):
+            self.ui.write(f"- {ending.replace('_', ' ').title()}: {count}")
+        self.ui.write()
+        self.ui.write("Achievements", color=Color.YELLOW, bold=True)
+        for achievement, description in ACHIEVEMENTS.items():
+            marker = "[x]" if achievement in profile.achievements else "[ ]"
+            self.ui.write(f"{marker} {description}")
+        self.ui.pause()
 
     def _story_choice(self, heading: str, options: Sequence[str]) -> int | None:
         while True:
@@ -1581,7 +1924,7 @@ class Game:
                 return False
         try:
             self.saves.save(selected, self.state)
-        except OSError as error:
+        except (OSError, ValueError, TypeError) as error:
             self.ui.write(f"Could not save the journey: {error}", color=Color.RED)
             return False
         self.ui.write(f"Journey saved in slot {selected}.", color=Color.GREEN)
@@ -1603,7 +1946,7 @@ class Game:
             return False
         try:
             self.state = self.saves.load(selected)
-        except (OSError, ValueError, KeyError) as error:
+        except (OSError, ValueError, KeyError, TypeError) as error:
             self.ui.write(f"Could not load the journey: {error}", color=Color.RED)
             self.ui.pause()
             return False
@@ -1626,15 +1969,17 @@ class Game:
         self.ui.clear()
         self.ui.title("HOW TO PLAY")
         self.ui.narrate(
-            "Enter the number beside a story choice or combat action, then press Return. At story "
+            "Enter the number beside a story choice or combat action. Menus also support W/S, the "
+            "arrow keys, and Return in an interactive terminal. At story "
             "choices, use I for inventory, C for character status, J for the journal, S to save, "
             "or M to return to the main menu."
         )
         self.ui.write("Combat", color=Color.YELLOW, bold=True)
         self.ui.narrate(
-            "Attack is dependable. Power attacks spend Focus for extra damage. Defending reduces "
-            "the next hit and restores Focus. Armor reduces incoming damage, and healing herbs can "
-            "be used from your pack."
+            "Enemies announce their next intent before you act. Attack is dependable. Power attacks "
+            "spend Focus, interrupt dangerous moves, and leave you Exposed. Defending halves every "
+            "incoming attack that round and restores Focus. Each background has a unique ability, "
+            "while companions can disrupt or weaken a chosen enemy."
         )
         self.ui.write("Choices and consequences", color=Color.YELLOW, bold=True)
         self.ui.narrate(
@@ -1646,13 +1991,60 @@ class Game:
     def _settings(self) -> None:
         while True:
             sound = "On" if self.ui.sound_enabled else "Off"
-            color = "On" if self.ui.color else "Off"
-            choice = self.ui.choose("SETTINGS", [f"Terminal sound: {sound}", f"Color: {color}", "Back"])
+            color = self.user_settings.color_mode.title()
+            speed = str(self.user_settings.text_speed).title()
+            motion = "Reduced" if self.ui.reduced_motion else "Full"
+            reader = "On" if self.ui.screen_reader else "Off"
+            difficulty = DIFFICULTY_DESCRIPTIONS[self.user_settings.difficulty]
+            choice = self.ui.choose(
+                "SETTINGS",
+                [
+                    f"Original sound cues: {sound}",
+                    f"Color mode: {color}",
+                    f"Narration speed: {speed}",
+                    f"Motion: {motion}",
+                    f"Screen-reader mode: {reader}",
+                    f"Difficulty: {difficulty}",
+                    "Back",
+                ],
+            )
             if choice == 1:
                 self.ui.sound_enabled = not self.ui.sound_enabled
+                self.user_settings.sound = self.ui.sound_enabled
                 if self.ui.sound_enabled:
                     self.ui.sound("notice")
             elif choice == 2:
-                self.ui.color = not self.ui.color
+                modes = ["auto", "on", "off"]
+                current = modes.index(self.user_settings.color_mode)
+                self.user_settings.color_mode = modes[(current + 1) % len(modes)]
+                if self.user_settings.color_mode == "auto":
+                    self.ui.color = self.ui._supports_color()
+                else:
+                    self.ui.color = self.user_settings.color_mode == "on"
+            elif choice == 3:
+                speeds = ["slow", "normal", "fast", "instant"]
+                current = speeds.index(self.user_settings.text_speed)
+                self.user_settings.text_speed = speeds[(current + 1) % len(speeds)]
+                self.ui.set_text_speed(self.user_settings.text_speed)
+            elif choice == 4:
+                self.ui.reduced_motion = not self.ui.reduced_motion
+                self.user_settings.reduced_motion = self.ui.reduced_motion
+            elif choice == 5:
+                self.ui.screen_reader = not self.ui.screen_reader
+                self.user_settings.screen_reader = self.ui.screen_reader
+            elif choice == 6:
+                difficulties = ["story", "ranger", "shadow"]
+                current = difficulties.index(self.user_settings.difficulty)
+                self.user_settings.difficulty = difficulties[(current + 1) % len(difficulties)]
+                self.combat.set_difficulty(DIFFICULTY_MODES[self.user_settings.difficulty])
             else:
                 return
+            self._persist_settings()
+
+    def _persist_settings(self) -> None:
+        if self.settings_manager is None:
+            return
+        try:
+            self.settings_manager.save(self.user_settings)
+        except OSError as error:
+            self.ui.write(f"Settings could not be saved: {error}", color=Color.RED)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 import random
+import sys
+import textwrap
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -12,6 +14,16 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "assets"
 FONT_PATH = "/System/Library/Fonts/Menlo.ttc"
+sys.path.insert(0, str(ROOT))
+
+from roads_beneath_shadow.artwork import (  # noqa: E402
+    BLACK_RIDER_CLIFFHANGER_ART,
+    MIDGEWATER_RUINS_ART,
+    ORC_ATTACK_ART,
+    PRANCING_PONY_EXTERIOR_ART,
+    THIRD_STONE_DISCOVERY_ART,
+    TITLE_ART_EXPANDED,
+)
 
 INK = "#d7ded8"
 MUTED = "#819188"
@@ -101,79 +113,51 @@ def itch_cover() -> Image.Image:
     return image
 
 
+def art_rows(art: str, color: str) -> list[tuple[str, str]]:
+    return [(line, color) for line in textwrap.dedent(art).strip("\n").splitlines()]
+
+
 SCENES: list[tuple[str, list[tuple[str, str]]]] = [
     (
         "TITLE SCREEN",
-        [
-            ("                         .  *  .", SILVER),
-            ("                         --|--", SILVER),
-            ("     ____   ___    _    ____  ____", GOLD),
-            ("    |  _ \\ / _ \\  / \\  |  _ \\/ ___|", GOLD),
-            ("    | |_) | | | |/ _ \\ | | | \\___ " + "\\", GOLD),
-            ("    |  _ <| |_| / ___ \\| |_| |___) |", GOLD),
-            ("    |_| \\_\\\\___/_/   \\_\\____/|____/", GOLD),
-            ("        BENEATH THE SHADOW", INK),
-            ("", INK),
-            ("    [1] Begin a new journey", GREEN),
-            ("    [2] Load a saved journey", MUTED),
+        art_rows(TITLE_ART_EXPANDED, SILVER)
+        + [
+            ("ROADS BENEATH THE SHADOW", GOLD),
+            ("[1] Begin a new journey", GREEN),
+            ("[2] Load a journey     [3] Chronicle", MUTED),
         ],
     ),
     (
         "CHAPTER I — BLOOD AT THE PRANCING PONY",
-        [
-            ("              ______/   \\______", GOLD),
-            ("             /_______________  " + "\\", GOLD),
-            ("             |  []   []   [] |  |P|", GOLD),
-            ("          ___|_____|    |____|__|_|___", GOLD),
-            ("              THE PRANCING PONY", INK),
-            ("", INK),
+        art_rows(PRANCING_PONY_EXTERIOR_ART, GOLD)
+        + [
             ("Rain hammers Bree. Inside, nobody sings.", SILVER),
-            ("A wounded messenger presses a silver star into your hand.", INK),
             ("\"The star opens the road.\"", GREEN),
         ],
     ),
     (
         "ORCS AT THE DOOR",
-        [
-            ("    | WINDOW |      ----->      * CRASH *", RED),
-            ("    |_\\/\\/__|", RED),
-            ("             \\o/       \\o/       \\o/", GOLD),
-            ("              |---      |---      |---", GOLD),
-            ("             / \\       / \\       / " + "\\", GOLD),
-            ("", INK),
+        art_rows(ORC_ATTACK_ART, RED)
+        + [
             ("WHAT WILL YOU DO?", SILVER),
             ("[1] Draw your weapon and fight beside Mara", GREEN),
-            ("[2] Hide the pendant and protect the letter", INK),
-            ("[3] Search the fallen messenger for another clue", INK),
-            ("[4] Escape through the inn's kitchen", INK),
+            ("[2] Hide the pendant and protect the letter", MUTED),
         ],
     ),
     (
         "ENCOUNTER — MIDGEWATER AMBUSH",
-        [
+        art_rows(MIDGEWATER_RUINS_ART, MUTED)
+        + [
             ("YOU        HP 24/30   FOCUS 2/3", GREEN),
-            ("MARA       HP 18/22   TRUST  +2", SILVER),
-            ("", INK),
-            ("TARGET     MARSH WARG   HP 15/21", RED),
-            ("           [========----]", RED),
-            ("", INK),
-            ("[1] Attack          [4] Defend", INK),
-            ("[2] Power attack    [5] Use item", GOLD),
-            ("[3] Change target   [6] Command Mara", INK),
-            ("", INK),
-            ("Mara: \"Left flank. I will draw its teeth.\"", GREEN),
+            ("MARSH WARG  HP 15/21   INTENT: POUNCE", RED),
+            ("[1] Attack   [2] Power attack   [3] Defend", GOLD),
+            ("Mara: \"Left flank. I will draw its teeth.\"", SILVER),
         ],
     ),
     (
         "THE THIRD STONE OPENS",
-        [
-            ("             [ 1 ]   [ 2 ]   [ 3 ]", GOLD),
-            ("             |   |   |   |   | * |", GOLD),
-            ("       ______|___|___|___|___|_|_|______", GOLD),
-            ("                               /|\\", SILVER),
-            ("                            --- * ---", SILVER),
-            ("                               \\|/", SILVER),
-            ("", INK),
+        art_rows(THIRD_STONE_DISCOVERY_ART, SILVER)
+        + [
             ("QUEST UPDATED: THE MISSING WATCHMAN", GREEN),
             ("Hope +1  |  Mara trust +1  |  New clue discovered", MUTED),
             ("A map beneath the dust shows a road that should not exist.", INK),
@@ -181,16 +165,8 @@ SCENES: list[tuple[str, list[tuple[str, str]]]] = [
     ),
     (
         "THE BLACK RIDER",
-        [
-            ("                       .-^-.", SILVER),
-            ("                      /_|||_\\", SILVER),
-            ("                     /  |||  " + "\\", SILVER),
-            ("                    /___|||___\\", SILVER),
-            ("                       / " + "\\", SILVER),
-            ("", INK),
-            ("A horn answers from the eastern road.", RED),
-            ("The rider turns its hood toward you — and speaks your name.", INK),
-            ("", INK),
+        art_rows(BLACK_RIDER_CLIFFHANGER_ART, SILVER)
+        + [
             ("END OF PART I", GOLD),
             ("Your choices carry into Part II: THE DEAD ROAD", GREEN),
         ],
@@ -215,10 +191,12 @@ def gameplay_frame(scene_index: int, reveal: float, cursor: bool) -> Image.Image
 
     visible = max(1, math.ceil(len(lines) * reveal))
     y = 132
-    face = font(17)
+    face_size = 15 if len(lines) <= 16 else 13
+    face = font(face_size)
+    line_step = min(29, max(19, 396 // max(1, len(lines))))
     for text, color in lines[:visible]:
         draw.text((53, y), text, font=face, fill=color)
-        y += 36
+        y += line_step
 
     if cursor:
         draw.rectangle((53, 548, 65, 570), fill=GREEN)

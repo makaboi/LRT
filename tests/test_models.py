@@ -13,6 +13,13 @@ class CharacterTests(unittest.TestCase):
         self.assertEqual(character.armor, "patched_leather")
         self.assertEqual(character.inventory["healing_herb"], 1)
 
+    def test_every_origin_exposes_a_distinct_combat_ability(self) -> None:
+        self.assertEqual(
+            {origin.ability_id for origin in ORIGINS},
+            {"stand_fast", "flanking_strike", "field_remedy"},
+        )
+        self.assertTrue(all(origin.ability_name and origin.ability_description for origin in ORIGINS))
+
     def test_inventory_can_equip_and_consume_items(self) -> None:
         character = Character.from_origin("Arin", ORIGINS[0])
         character.add_item("orc_cleaver")

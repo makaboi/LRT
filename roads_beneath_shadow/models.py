@@ -2,11 +2,36 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 
 SAVE_VERSION = 2
+
+VALID_SCENE_IDS = frozenset(
+    {
+        "chapter1_intro",
+        "chapter1_decision",
+        "branch_fight",
+        "branch_hide",
+        "branch_search",
+        "branch_escape",
+        "branch_question",
+        "aftermath",
+        "bree_exploration",
+        "north_gate",
+        "road_from_bree",
+        "midgewater_camp",
+        "missing_watchman",
+        "marsh_ambush",
+        "wayhouse",
+        "final_battle",
+        "cliffhanger",
+        "complete",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +58,9 @@ class Origin:
     starting_items: tuple[str, ...]
     weapon: str
     armor: str | None = None
+    ability_id: str = ""
+    ability_name: str = ""
+    ability_description: str = ""
 
 
 @dataclass
@@ -113,6 +141,7 @@ class Character:
 @dataclass
 class GameState:
     character: Character
+    journey_id: str = field(default_factory=lambda: uuid4().hex)
     scene: str = "chapter1_intro"
     chapter: int = 1
     flags: dict[str, bool] = field(default_factory=dict)
@@ -147,25 +176,160 @@ class GameState:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "GameState":
-        version = int(payload.get("save_version", 0))
+        if not isinstance(payload, dict):
+            raise ValueError("Save state must be an object")
+        version = _required_int(payload.get("save_version", 0), "save_version")
         if version not in {1, SAVE_VERSION}:
             raise ValueError(f"Unsupported save version: {version}")
-        character_data = dict(payload["character"])
-        character_data.setdefault("tobin_trust", 0)
-        character = Character(**character_data)
+        if version == SAVE_VERSION:
+            required_state_fields = {
+                "character",
+                "scene",
+                "chapter",
+                "flags",
+                "quests",
+                "journal",
+                "visited",
+                "completed_quests",
+                "play_minutes",
+                "ending",
+            }
+            missing_state = sorted(required_state_fields - payload.keys())
+            if missing_state:
+                raise ValueError(f"Save state is missing required field: {missing_state[0]}")
+
+        character_payload = payload.get("character")
+        if not isinstance(character_payload, dict):
+            raise ValueError("character must be an object")
+        character_data = dict(character_payload)
+        if version == 1:
+            character_data.setdefault("tobin_trust", 0)
+        character = _character_from_dict(character_data)
+
+        if "journey_id" not in payload:
+            # v1 and earlier v2 saves predate stable journey identifiers.
+            legacy_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            journey_id = uuid5(NAMESPACE_URL, f"roads-beneath-shadow:{legacy_payload}").hex
+        else:
+            journey_id = payload["journey_id"]
+        _bounded_string(journey_id, "journey_id", minimum=1, maximum=128)
+
         return cls(
             character=character,
-            scene=payload.get("scene", "chapter1_intro"),
-            chapter=int(payload.get("chapter", 1)),
-            flags=dict(payload.get("flags", {})),
-            quests=list(payload.get("quests", [])),
-            journal=list(payload.get("journal", [])),
-            visited=list(payload.get("visited", [])),
-            completed_quests=list(payload.get("completed_quests", [])),
-            play_minutes=int(payload.get("play_minutes", 0)),
-            ending=payload.get("ending"),
+            journey_id=journey_id,
+            scene=_bounded_string(payload.get("scene", "chapter1_intro"), "scene", minimum=1, maximum=128),
+            chapter=_required_int(payload.get("chapter", 1), "chapter"),
+            flags=_bool_dict(payload.get("flags", {}), "flags"),
+            quests=_string_list(payload.get("quests", []), "quests"),
+            journal=_string_list(payload.get("journal", []), "journal"),
+            visited=_string_list(payload.get("visited", []), "visited"),
+            completed_quests=_string_list(payload.get("completed_quests", []), "completed_quests"),
+            play_minutes=_required_int(payload.get("play_minutes", 0), "play_minutes"),
+            ending=_optional_bounded_string(payload.get("ending"), "ending", maximum=128),
             save_version=SAVE_VERSION,
         )
+
+
+def _required_int(value: Any, field_name: str) -> int:
+    """Accept JSON integers only; bool is deliberately not treated as an int."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field_name} must be an integer")
+    return value
+
+
+def _bounded_string(value: Any, field_name: str, *, minimum: int = 0, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    if not minimum <= len(value) <= maximum:
+        raise ValueError(f"{field_name} must contain between {minimum} and {maximum} characters")
+    if any(not character.isprintable() for character in value):
+        raise ValueError(f"{field_name} must not contain control or non-printing characters")
+    return value
+
+
+def _optional_bounded_string(value: Any, field_name: str, *, maximum: int) -> str | None:
+    if value is None:
+        return None
+    return _bounded_string(value, field_name, minimum=1, maximum=maximum)
+
+
+def _string_list(value: Any, field_name: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+    result: list[str] = []
+    for index, entry in enumerate(value):
+        result.append(_bounded_string(entry, f"{field_name}[{index}]", maximum=2_000))
+    return result
+
+
+def _bool_dict(value: Any, field_name: str) -> dict[str, bool]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be an object")
+    result: dict[str, bool] = {}
+    for key, entry in value.items():
+        validated_key = _bounded_string(key, f"{field_name} key", minimum=1, maximum=128)
+        if not isinstance(entry, bool):
+            raise ValueError(f"{field_name}.{validated_key} must be true or false")
+        result[validated_key] = entry
+    return result
+
+
+def _character_from_dict(payload: dict[str, Any]) -> Character:
+    required = {
+        "name",
+        "origin",
+        "max_hp",
+        "hp",
+        "strength",
+        "cunning",
+        "will",
+        "max_focus",
+        "focus",
+        "hope",
+        "corruption",
+        "mara_trust",
+        "tobin_trust",
+        "inventory",
+        "weapon",
+        "armor",
+    }
+    optional: set[str] = set()
+    missing = sorted(required - payload.keys())
+    if missing:
+        raise ValueError(f"character is missing required field: {missing[0]}")
+    unknown = next((key for key in payload if key not in required and key not in optional), None)
+    if unknown is not None:
+        raise ValueError(f"character contains unknown field: {unknown!r}")
+
+    inventory_payload = payload.get("inventory", {})
+    if not isinstance(inventory_payload, dict):
+        raise ValueError("character.inventory must be an object")
+    inventory: dict[str, int] = {}
+    for item_id, quantity in inventory_payload.items():
+        validated_id = _bounded_string(item_id, "character.inventory item ID", minimum=1, maximum=128)
+        validated_quantity = _required_int(quantity, f"character.inventory.{validated_id}")
+        if validated_quantity < 1:
+            raise ValueError(f"character.inventory.{validated_id} must be at least 1")
+        inventory[validated_id] = validated_quantity
+
+    return Character(
+        name=_bounded_string(payload["name"], "character.name", minimum=1, maximum=24),
+        origin=_bounded_string(payload["origin"], "character.origin", minimum=1, maximum=128),
+        max_hp=_required_int(payload["max_hp"], "character.max_hp"),
+        hp=_required_int(payload["hp"], "character.hp"),
+        strength=_required_int(payload["strength"], "character.strength"),
+        cunning=_required_int(payload["cunning"], "character.cunning"),
+        will=_required_int(payload["will"], "character.will"),
+        max_focus=_required_int(payload.get("max_focus", 3), "character.max_focus"),
+        focus=_required_int(payload.get("focus", 3), "character.focus"),
+        hope=_required_int(payload.get("hope", 0), "character.hope"),
+        corruption=_required_int(payload.get("corruption", 0), "character.corruption"),
+        mara_trust=_required_int(payload.get("mara_trust", 0), "character.mara_trust"),
+        tobin_trust=_required_int(payload.get("tobin_trust", 0), "character.tobin_trust"),
+        inventory=inventory,
+        weapon=_optional_bounded_string(payload.get("weapon"), "character.weapon", maximum=128),
+        armor=_optional_bounded_string(payload.get("armor"), "character.armor", maximum=128),
+    )
 
 
 @dataclass
@@ -177,6 +341,14 @@ class Enemy:
     attack_max: int
     armor: int = 0
     description: str = ""
+    archetype: str = "skirmisher"
+    intent_pattern: tuple[str, ...] = ("strike",)
+    phase_two_pattern: tuple[str, ...] = ()
+    phase_threshold: float = 0.0
+    statuses: dict[str, int] = field(default_factory=dict)
+    current_intent: str = "strike"
+    turn_count: int = 0
+    phase: int = 1
 
     @property
     def alive(self) -> bool:

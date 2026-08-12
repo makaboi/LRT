@@ -44,7 +44,7 @@ class EpisodePlayer:
             return "Arin"
         if "MAIN MENU" in context:
             self.main_menu_visits += 1
-            return "1" if self.main_menu_visits == 1 else "5"
+            return "1" if self.main_menu_visits == 1 else "6"
         if "Choose your background" in context:
             return str(self.origin_choice)
         if "Accept this background" in context:

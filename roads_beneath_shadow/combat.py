@@ -1,4 +1,4 @@
-"""Turn-based combat for terminal encounters."""
+"""Telegraphed, tactical turn-based combat for terminal encounters."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import random
 from dataclasses import dataclass
 from enum import Enum
 
-from .content import ITEMS
-from .models import Enemy, GameState
+from .content import ITEMS, ORIGINS
+from .models import Enemy, GameState, Origin
 from .ui import Color, TerminalUI
 
 
@@ -15,6 +15,38 @@ class CombatResult(str, Enum):
     VICTORY = "victory"
     DEFEAT = "defeat"
     ESCAPED = "escaped"
+
+
+class CombatDifficulty(str, Enum):
+    STORY = "story"
+    NORMAL = "normal"
+    HARD = "hard"
+
+
+@dataclass(frozen=True)
+class DifficultyProfile:
+    incoming_multiplier: float
+    outgoing_bonus: int
+    flee_bonus: int
+    power_bonus: int
+    power_focus_cost: int
+    exposure_penalty: int
+    regular_resistance: int
+    boss_resistance: int
+    aggressive_opening: bool
+
+
+DIFFICULTY_PROFILES: dict[CombatDifficulty, DifficultyProfile] = {
+    # Story keeps the full tactical rules, but makes recovery from a mistake
+    # generous.  Ranger deliberately preserves the original v0.2 numbers.
+    CombatDifficulty.STORY: DifficultyProfile(0.70, 1, 1, 5, 1, 1, 0, 0, False),
+    CombatDifficulty.NORMAL: DifficultyProfile(1.00, 0, 0, 5, 1, 2, 0, 0, False),
+    # Shadow changes tempo instead of merely inflating every health bar.  Enemy
+    # formations open with a telegraphed attack, armor matters more, and a Power
+    # Attack is a deliberate two-Focus commitment.  Companion commands and
+    # origin abilities bypass this resistance, rewarding tactical play.
+    CombatDifficulty.HARD: DifficultyProfile(1.25, 0, -1, 4, 2, 3, 1, 2, True),
+}
 
 
 @dataclass
@@ -26,48 +58,142 @@ class CombatConfig:
     location_text: str = "Steel clears leather. Rain hisses through the broken window."
     objective: str | None = None
     max_rounds: int | None = None
+    difficulty: CombatDifficulty | str | None = None
+
+
+@dataclass(frozen=True)
+class IntentSpec:
+    label: str
+    telegraph: str
+    kind: str
+    damage_bonus: int = 0
+    interruptible: bool = False
+    inflicts_bleeding: bool = False
+
+
+INTENTS: dict[str, IntentSpec] = {
+    "strike": IntentSpec("Strike", "a direct weapon attack", "damage"),
+    "quick": IntentSpec("Quick Cut", "a fast but lighter attack", "damage", damage_bonus=-1),
+    "aim": IntentSpec("Take Aim", "prepares a stronger next attack", "aim", interruptible=True),
+    "guard": IntentSpec("Iron Guard", "raises Armor until struck", "guard", interruptible=True),
+    "command": IntentSpec("War Cry", "empowers the other enemies", "command", interruptible=True),
+    "heavy": IntentSpec("Heavy Blow", "a crushing attack; Defend or interrupt it", "damage", 2, True),
+    "prowl": IntentSpec("Prowl", "lines up a vicious pounce", "aim", interruptible=True),
+    "pounce": IntentSpec("Pounce", "a heavy leap that causes Bleeding", "damage", 2, True, True),
+    "maul": IntentSpec("Maul", "teeth and claws that cause Bleeding", "damage", 0, False, True),
+    "cleave": IntentSpec("Ash Cleave", "a broad, punishing sweep", "damage", 1),
+    "brace": IntentSpec("Ashen Brace", "fortifies Armor for the next hit", "guard", interruptible=True),
+    "menace": IntentSpec("Shadow Mark", "drains Focus and leaves you Exposed", "menace", interruptible=True),
+    "execution": IntentSpec("Ash-Hand Execution", "a devastating blow; interrupt it now", "damage", 4, True),
+}
 
 
 class CombatEngine:
-    def __init__(self, ui: TerminalUI, rng: random.Random | None = None) -> None:
+    """Runs one encounter.
+
+    Every enemy announces an intent before the player commits to an action.  The
+    engine accepts an injected ``random.Random`` instance, so damage, evasion,
+    and companion reactions remain completely deterministic in tests.
+    """
+
+    def __init__(
+        self,
+        ui: TerminalUI,
+        rng: random.Random | None = None,
+        difficulty: CombatDifficulty | str = CombatDifficulty.NORMAL,
+    ) -> None:
         self.ui = ui
         self.rng = rng or random.Random()
+        self.default_difficulty = self._coerce_difficulty(difficulty)
+        self._profile = DIFFICULTY_PROFILES[self.default_difficulty]
+        self._player_statuses: dict[str, int] = {}
+        self._ability_used = False
+        self._origin: Origin | None = None
+
+    def set_difficulty(self, difficulty: CombatDifficulty | str) -> None:
+        """Change the default profile used by future encounters."""
+
+        self.default_difficulty = self._coerce_difficulty(difficulty)
+        self._profile = DIFFICULTY_PROFILES[self.default_difficulty]
 
     def run(self, state: GameState, enemies: list[Enemy], config: CombatConfig | None = None) -> CombatResult:
         config = config or CombatConfig()
+        if not enemies:
+            return CombatResult.VICTORY
+
+        difficulty = self._coerce_difficulty(config.difficulty or self.default_difficulty)
+        self._profile = DIFFICULTY_PROFILES[difficulty]
         character = state.character
         character.focus = character.max_focus
+        self._player_statuses = {}
+        self._ability_used = False
+        self._origin = next((origin for origin in ORIGINS if origin.origin_id == character.origin), None)
+        for enemy in enemies:
+            enemy.statuses.clear()
+            enemy.phase = 1
+            enemy.current_intent = "strike"
+            enemy.turn_count = self._opening_turn_index(enemy)
+
         self.ui.sound("danger")
         self.ui.title("COMBAT")
         self.ui.narrate(config.location_text, color=Color.RED)
         if config.objective:
             self.ui.write(f"Objective: {config.objective}", color=Color.YELLOW, bold=True)
+        difficulty_label = {
+            CombatDifficulty.STORY: "Story",
+            CombatDifficulty.NORMAL: "Ranger",
+            CombatDifficulty.HARD: "Shadow",
+        }[difficulty]
+        self.ui.write(f"Difficulty: {difficulty_label}", color=Color.DIM)
+        if difficulty is CombatDifficulty.HARD:
+            self.ui.write(
+                "Shadow rules: enemies open aggressively; Power Attack costs 2 Focus.",
+                color=Color.DIM,
+            )
 
         if config.surprise_round and enemies:
-            damage = self._player_damage(state, enemies[0], power=False)
-            enemies[0].hp = max(0, enemies[0].hp - damage)
-            self.ui.write(f"You seize the opening and strike {enemies[0].name} for {damage} damage!", color=Color.GREEN)
+            first = next((enemy for enemy in enemies if enemy.alive), None)
+            if first:
+                damage = self._player_damage(state, first, power=False)
+                first.hp = max(0, first.hp - damage)
+                self.ui.write(f"You seize the opening and strike {first.name} for {damage} damage!", color=Color.GREEN)
 
         round_number = 1
-        active = next(enemy for enemy in enemies if enemy.alive)
+        active = next((enemy for enemy in enemies if enemy.alive), enemies[0])
         while character.alive and any(enemy.alive for enemy in enemies):
+            self._prepare_round(enemies)
+            if not any(enemy.alive for enemy in enemies):
+                break
             if not active.alive:
                 active = next(enemy for enemy in enemies if enemy.alive)
+            self._plan_intents(enemies)
             self._show_status(state, enemies, round_number, active)
+
             actions = ["attack", "power", "defend", "item", "inspect"]
-            options = ["Attack", "Power attack (-1 Focus)", "Defend", "Use an item", "Inspect enemy"]
+            options = [
+                "Attack",
+                f"Power attack (-{self._profile.power_focus_cost} Focus, become Exposed)",
+                "Defend (halve all attacks, recover 1 Focus)",
+                "Use an item",
+                "Inspect enemy",
+            ]
             if sum(enemy.alive for enemy in enemies) > 1:
                 actions.append("target")
                 options.append(f"Change target (current: {active.name})")
+            if self._origin and self._origin.ability_name:
+                actions.append("origin")
+                availability = "spent" if self._ability_used else "-1 Focus"
+                options.append(f"{self._origin.ability_name} ({availability})")
             if config.mara_aid:
                 actions.append("mara")
-                options.append("Call to Mara (-1 Focus)")
+                options.append("Mara: Crossing Blades (-1 Focus, disrupt)")
             if config.tobin_aid:
                 actions.append("tobin")
-                options.append("Call to Tobin (-1 Focus)")
+                options.append("Tobin: Pinning Shot (-1 Focus, weaken)")
             if config.allow_flee:
                 actions.append("flee")
                 options.append("Attempt to flee")
+
             selected = self.ui.choose("Choose your action", options)
             if selected is None:
                 continue
@@ -78,20 +204,33 @@ class CombatEngine:
             if action == "attack":
                 damage = self._player_damage(state, active, power=False)
                 active.hp = max(0, active.hp - damage)
+                self._consume_hit_statuses(active)
                 self.ui.write(f"You strike {active.name} for {damage} damage.", color=Color.GREEN)
             elif action == "power":
-                if character.focus <= 0:
-                    self.ui.write("You have no Focus left. Choose another action.", color=Color.YELLOW)
+                if character.focus < self._profile.power_focus_cost:
+                    needed = self._profile.power_focus_cost
+                    self.ui.write(
+                        f"Power Attack requires {needed} Focus. Choose another action.",
+                        color=Color.YELLOW,
+                    )
                     continue
-                character.focus -= 1
+                character.focus -= self._profile.power_focus_cost
                 damage = self._player_damage(state, active, power=True)
                 active.hp = max(0, active.hp - damage)
-                self.ui.write(f"Your heavy blow deals {damage} damage to {active.name}!", color=Color.GREEN, bold=True)
+                interrupted = active.current_intent in INTENTS and INTENTS[active.current_intent].interruptible
+                active.statuses["staggered"] = 1
+                active.statuses.pop("guarded", None)
+                active.statuses.pop("vulnerable", None)
+                self._player_statuses["exposed"] = 1
+                text = f"Your committed blow deals {damage} damage to {active.name}"
+                text += " and interrupts its intent" if interrupted else ""
+                text += ", but leaves you Exposed!"
+                self.ui.write(text, color=Color.GREEN, bold=True)
             elif action == "defend":
                 defended = True
                 restored = 1 if character.focus < character.max_focus else 0
                 character.focus = min(character.max_focus, character.focus + restored)
-                message = "You set your feet and raise your guard."
+                message = "You set your feet. Every incoming attack will be halved."
                 if restored:
                     message += " You recover 1 Focus."
                 self.ui.write(message, color=Color.CYAN)
@@ -104,11 +243,19 @@ class CombatEngine:
                 consumes_turn = False
             elif action == "target":
                 living = [enemy for enemy in enemies if enemy.alive]
-                target = self.ui.choose("Choose a target", [f"{enemy.name} ({enemy.hp}/{enemy.max_hp} Health)" for enemy in living], allow_back=True)
+                target = self.ui.choose(
+                    "Choose a target",
+                    [f"{enemy.name} ({enemy.hp}/{enemy.max_hp} Health)" for enemy in living],
+                    allow_back=True,
+                )
                 if target is not None:
                     active = living[target - 1]
                     self.ui.write(f"You turn your attention to {active.name}.", color=Color.CYAN)
                 consumes_turn = False
+            elif action == "origin":
+                consumes_turn, defended = self._use_origin_ability(state, active)
+                if not consumes_turn:
+                    continue
             elif action == "mara":
                 if character.focus <= 0:
                     self.ui.write("You have no Focus left. Choose another action.", color=Color.YELLOW)
@@ -116,7 +263,12 @@ class CombatEngine:
                 character.focus -= 1
                 damage = self.rng.randint(3, 5) + max(0, character.mara_trust)
                 active.hp = max(0, active.hp - damage)
-                self.ui.write(f"Mara crosses your attack and deals {damage} damage to {active.name}.", color=Color.MAGENTA)
+                active.statuses["staggered"] = 1
+                active.statuses["bleeding"] = max(2, active.statuses.get("bleeding", 0))
+                self.ui.write(
+                    f"Mara crosses your attack for {damage} damage, leaving {active.name} Bleeding and disrupted.",
+                    color=Color.MAGENTA,
+                )
             elif action == "tobin":
                 if character.focus <= 0:
                     self.ui.write("You have no Focus left. Choose another action.", color=Color.YELLOW)
@@ -124,10 +276,15 @@ class CombatEngine:
                 character.focus -= 1
                 damage = self.rng.randint(2, 4) + max(0, character.tobin_trust)
                 active.hp = max(0, active.hp - damage)
-                self.ui.write(f"Tobin's arrow deals {damage} damage to {active.name}.", color=Color.CYAN)
+                active.statuses["weakened"] = max(2, active.statuses.get("weakened", 0))
+                self.ui.write(
+                    f"Tobin's pinning arrow deals {damage} damage; {active.name}'s next attacks are Weakened.",
+                    color=Color.CYAN,
+                )
             elif action == "flee":
-                if self.rng.randint(1, 6) + character.cunning >= 6:
+                if self.rng.randint(1, 6) + character.cunning + self._profile.flee_bonus >= 6:
                     self.ui.write("You overturn a table and vanish through the smoke.", color=Color.CYAN)
+                    self._player_statuses.clear()
                     return CombatResult.ESCAPED
                 self.ui.write("The enemy cuts off your escape.", color=Color.RED)
 
@@ -138,40 +295,300 @@ class CombatEngine:
                 if not any(enemy.alive for enemy in enemies):
                     break
                 active = next(enemy for enemy in enemies if enemy.alive)
-                self.ui.write(f"{active.name} steps over the body and attacks!", color=Color.RED)
 
-            incoming = self.rng.randint(active.attack_min, active.attack_max)
-            armor = ITEMS[character.armor].defense if character.armor else 0
-            incoming = max(1, incoming - armor)
-            if defended:
-                incoming = max(1, incoming // 2)
-            if config.mara_aid and self.rng.random() < 0.25:
-                incoming = max(0, incoming - 2)
-                self.ui.write("Mara turns part of the blow with her second blade.", color=Color.MAGENTA)
-            character.hp = max(0, character.hp - incoming)
-            self.ui.write(f"{active.name} hits you for {incoming} damage.", color=Color.RED)
+            self._tick_player_bleeding(character)
+            if not character.alive:
+                break
+            self._enemy_phase(state, enemies, defended=defended, config=config)
             round_number += 1
             if config.max_rounds and round_number > config.max_rounds and character.alive:
-                self.ui.write("Your objective is complete—the surviving enemies lose their chance to stop you.", color=Color.GREEN)
+                self.ui.write(
+                    "Your objective is complete—the surviving enemies lose their chance to stop you.",
+                    color=Color.GREEN,
+                )
+                self._player_statuses.clear()
                 return CombatResult.VICTORY
 
         if character.alive:
             self.ui.sound("victory")
             self.ui.write("The last enemy crashes to the floor.", color=Color.GREEN, bold=True)
+            self._player_statuses.clear()
             return CombatResult.VICTORY
         self.ui.write("Your strength fails. Black shapes close around you.", color=Color.RED, bold=True)
+        self._player_statuses.clear()
         return CombatResult.DEFEAT
+
+    @staticmethod
+    def _coerce_difficulty(value: CombatDifficulty | str) -> CombatDifficulty:
+        try:
+            return value if isinstance(value, CombatDifficulty) else CombatDifficulty(str(value).lower())
+        except ValueError as error:
+            valid = ", ".join(mode.value for mode in CombatDifficulty)
+            raise ValueError(f"Unknown combat difficulty {value!r}; choose {valid}") from error
+
+    def _prepare_round(self, enemies: list[Enemy]) -> None:
+        for enemy in enemies:
+            if not enemy.alive:
+                continue
+            bleeding = enemy.statuses.get("bleeding", 0)
+            if bleeding:
+                enemy.hp = max(0, enemy.hp - 1)
+                self.ui.write(f"{enemy.name} loses 1 Health from Bleeding.", color=Color.MAGENTA)
+                self._decrement_status(enemy.statuses, "bleeding")
+                if not enemy.alive:
+                    self.ui.write(f"{enemy.name} falls from its wounds.", color=Color.YELLOW, bold=True)
+                    continue
+            if (
+                enemy.phase == 1
+                and enemy.phase_two_pattern
+                and enemy.phase_threshold > 0
+                and enemy.hp <= enemy.max_hp * enemy.phase_threshold
+            ):
+                enemy.phase = 2
+                enemy.turn_count = self._opening_turn_index(enemy, phase_two=True)
+                self.ui.write(
+                    f"PHASE II — {enemy.name} casts aside restraint; ash burns along its weapon.",
+                    color=Color.RED,
+                    bold=True,
+                )
+
+    def _plan_intents(self, enemies: list[Enemy]) -> None:
+        for enemy in enemies:
+            if not enemy.alive:
+                continue
+            pattern = enemy.phase_two_pattern if enemy.phase == 2 and enemy.phase_two_pattern else enemy.intent_pattern
+            pattern = pattern or ("strike",)
+            intent = pattern[enemy.turn_count % len(pattern)]
+            enemy.current_intent = intent if intent in INTENTS else "strike"
+
+    def _opening_turn_index(self, enemy: Enemy, *, phase_two: bool = False) -> int:
+        """Choose a fair, telegraphed opening for the selected difficulty.
+
+        Ranger and Story use each authored pattern exactly as written.  Shadow
+        starts at the first directly hostile intent, avoiding the old sequence
+        where commanders, predators, and bosses all granted a free setup round.
+        The player still sees the intent before choosing an action.
+        """
+
+        if not self._profile.aggressive_opening:
+            return 0
+        pattern = enemy.phase_two_pattern if phase_two and enemy.phase_two_pattern else enemy.intent_pattern
+        for index, intent_name in enumerate(pattern or ("strike",)):
+            if INTENTS.get(intent_name, INTENTS["strike"]).kind in {"damage", "menace"}:
+                return index
+        return 0
+
+    def _enemy_phase(self, state: GameState, enemies: list[Enemy], *, defended: bool, config: CombatConfig) -> None:
+        for enemy in enemies:
+            if not enemy.alive or not state.character.alive:
+                continue
+            self._resolve_enemy_action(state, enemy, enemies, defended=defended, config=config)
+
+    def _resolve_enemy_action(
+        self,
+        state: GameState,
+        enemy: Enemy,
+        enemies: list[Enemy],
+        *,
+        defended: bool,
+        config: CombatConfig,
+    ) -> None:
+        spec = INTENTS.get(enemy.current_intent, INTENTS["strike"])
+        staggered = bool(enemy.statuses.pop("staggered", 0))
+        if staggered and spec.interruptible:
+            self.ui.write(f"{enemy.name}'s {spec.label} is interrupted!", color=Color.GREEN, bold=True)
+            enemy.turn_count += 1
+            return
+
+        if spec.kind == "aim":
+            enemy.statuses["aimed"] = 1
+            self.ui.write(f"{enemy.name} circles and takes aim. Its next attack will hit harder.", color=Color.YELLOW)
+        elif spec.kind == "guard":
+            enemy.statuses["guarded"] = 1
+            self.ui.write(f"{enemy.name} braces behind iron: +2 Armor until struck.", color=Color.YELLOW)
+        elif spec.kind == "command":
+            allies = [ally for ally in enemies if ally is not enemy and ally.alive]
+            for ally in allies:
+                ally.statuses["empowered"] = max(1, ally.statuses.get("empowered", 0))
+            if allies:
+                self.ui.write(f"{enemy.name}'s war cry empowers its allies' next attacks.", color=Color.RED)
+            else:
+                enemy.statuses["empowered"] = 1
+                self.ui.write(f"{enemy.name}'s war cry steels its own next attack.", color=Color.RED)
+        elif spec.kind == "menace":
+            lost = 1 if state.character.focus > 0 else 0
+            state.character.focus = max(0, state.character.focus - 1)
+            self._player_statuses["exposed"] = 1
+            message = f"{enemy.name}'s shadow mark leaves you Exposed"
+            message += " and drains 1 Focus." if lost else "."
+            self.ui.write(message, color=Color.MAGENTA, bold=True)
+        else:
+            self._enemy_attack(state, enemy, spec, defended=defended, config=config, staggered=staggered)
+        enemy.turn_count += 1
+
+    def _enemy_attack(
+        self,
+        state: GameState,
+        enemy: Enemy,
+        spec: IntentSpec,
+        *,
+        defended: bool,
+        config: CombatConfig,
+        staggered: bool,
+    ) -> None:
+        character = state.character
+        if self._player_statuses.get("evade", 0):
+            self._decrement_status(self._player_statuses, "evade")
+            self.ui.write(f"You evade {enemy.name}'s {spec.label} completely.", color=Color.CYAN, bold=True)
+            return
+
+        raw = self.rng.randint(enemy.attack_min, enemy.attack_max) + spec.damage_bonus
+        if enemy.statuses.pop("aimed", 0):
+            raw += 2
+        if enemy.statuses.pop("empowered", 0):
+            raw += 1
+        if enemy.phase == 2:
+            raw += 1
+        if staggered:
+            raw -= 2
+        weakened = enemy.statuses.get("weakened", 0)
+        if weakened:
+            raw -= 2
+            self._decrement_status(enemy.statuses, "weakened")
+        raw = max(1, int(raw * self._profile.incoming_multiplier + 0.5))
+
+        armor = ITEMS[character.armor].defense if character.armor else 0
+        incoming = max(1, raw - armor)
+        if self._player_statuses.pop("exposed", 0):
+            incoming += self._profile.exposure_penalty
+            self.ui.write("The enemy exploits your Exposed stance.", color=Color.RED)
+        if defended:
+            incoming = max(1, incoming // 2)
+        ward = self._player_statuses.pop("ward", 0)
+        if ward:
+            incoming = max(0, incoming - ward)
+            self.ui.write("Your healer's ward absorbs part of the blow.", color=Color.CYAN)
+        if config.mara_aid and self.rng.random() < 0.20:
+            incoming = max(0, incoming - 2)
+            self.ui.write("Mara turns part of the blow with her second blade.", color=Color.MAGENTA)
+
+        character.hp = max(0, character.hp - incoming)
+        self.ui.write(f"{enemy.name}'s {spec.label} hits you for {incoming} damage.", color=Color.RED)
+        if spec.inflicts_bleeding and incoming > 0:
+            self._player_statuses["bleeding"] = max(2, self._player_statuses.get("bleeding", 0))
+            self.ui.write("You are Bleeding. Remedy it before the next enemy phase.", color=Color.MAGENTA)
+
+        if self._player_statuses.pop("riposte", 0) and character.alive and enemy.alive:
+            counter = character.strength + 2
+            enemy.hp = max(0, enemy.hp - counter)
+            self.ui.write(f"You answer from behind your guard for {counter} damage!", color=Color.GREEN)
+            if not enemy.alive:
+                self.ui.write(f"{enemy.name} falls to the counterattack.", color=Color.YELLOW, bold=True)
+
+    def _tick_player_bleeding(self, character) -> None:
+        bleeding = self._player_statuses.get("bleeding", 0)
+        if not bleeding:
+            return
+        character.hp = max(0, character.hp - 1)
+        self.ui.write("Bleeding costs you 1 Health.", color=Color.MAGENTA)
+        self._decrement_status(self._player_statuses, "bleeding")
+
+    def _use_origin_ability(self, state: GameState, enemy: Enemy) -> tuple[bool, bool]:
+        character = state.character
+        origin = self._origin
+        if not origin or not origin.ability_id:
+            return False, False
+        if self._ability_used:
+            self.ui.write(f"{origin.ability_name} has already been used in this battle.", color=Color.YELLOW)
+            return False, False
+        if character.focus <= 0:
+            self.ui.write("You have no Focus left. Choose another action.", color=Color.YELLOW)
+            return False, False
+
+        character.focus -= 1
+        self._ability_used = True
+        if origin.ability_id == "stand_fast":
+            self._player_statuses.pop("exposed", None)
+            self._player_statuses.pop("bleeding", None)
+            self._player_statuses["riposte"] = 1
+            self.ui.write(
+                "STAND FAST — You clear Bleeding and Exposed, guard every blow, and ready a counter.",
+                color=Color.CYAN,
+                bold=True,
+            )
+            return True, True
+        if origin.ability_id == "flanking_strike":
+            weapon_attack = ITEMS[character.weapon].attack if character.weapon else 0
+            damage = self.rng.randint(1, 3) + character.cunning + weapon_attack + self._profile.outgoing_bonus
+            enemy.hp = max(0, enemy.hp - damage)
+            enemy.statuses.pop("guarded", None)
+            enemy.statuses["vulnerable"] = 1
+            self._player_statuses["evade"] = 1
+            self.ui.write(
+                f"FLANKING STRIKE — You bypass Armor for {damage} damage; {enemy.name} is Vulnerable and you gain Evasion.",
+                color=Color.GREEN,
+                bold=True,
+            )
+            return True, False
+        if origin.ability_id == "field_remedy":
+            healed = character.heal(4 + character.will)
+            self._player_statuses.pop("bleeding", None)
+            self._player_statuses.pop("exposed", None)
+            self._player_statuses["ward"] = 2
+            self.ui.write(
+                f"FIELD REMEDY — You recover {healed} Health, clear hostile effects, and ward the next blow.",
+                color=Color.CYAN,
+                bold=True,
+            )
+            return True, False
+        self.ui.write("Your training offers no opening here.", color=Color.YELLOW)
+        return False, False
 
     def _player_damage(self, state: GameState, enemy: Enemy, *, power: bool) -> int:
         character = state.character
         weapon_attack = ITEMS[character.weapon].attack if character.weapon else 0
         roll = self.rng.randint(1, 3)
-        bonus = 3 if power else 0
-        return max(1, roll + character.strength + weapon_attack + bonus - enemy.armor)
+        guarded = 0 if power else (2 if enemy.statuses.get("guarded", 0) else 0)
+        vulnerable = 2 if enemy.statuses.get("vulnerable", 0) else 0
+        bonus = self._profile.power_bonus if power else 0
+        resistance = (
+            self._profile.boss_resistance
+            if enemy.archetype == "boss"
+            else self._profile.regular_resistance
+        )
+        return max(
+            1,
+            roll
+            + character.strength
+            + weapon_attack
+            + bonus
+            + vulnerable
+            + self._profile.outgoing_bonus
+            - enemy.armor
+            - guarded
+            - resistance,
+        )
+
+    @staticmethod
+    def _consume_hit_statuses(enemy: Enemy) -> None:
+        enemy.statuses.pop("guarded", None)
+        enemy.statuses.pop("vulnerable", None)
+
+    @staticmethod
+    def _decrement_status(statuses: dict[str, int], name: str) -> None:
+        remaining = statuses.get(name, 0) - 1
+        if remaining > 0:
+            statuses[name] = remaining
+        else:
+            statuses.pop(name, None)
 
     def use_item(self, state: GameState) -> bool:
         character = state.character
-        consumables = [item_id for item_id, quantity in character.inventory.items() if quantity and ITEMS[item_id].healing]
+        consumables = [
+            item_id
+            for item_id, quantity in character.inventory.items()
+            if quantity and ITEMS[item_id].healing
+        ]
         if not consumables:
             self.ui.write("You have no usable items.", color=Color.YELLOW)
             return False
@@ -180,16 +597,27 @@ class CombatEngine:
         if choice is None:
             return False
         item = ITEMS[consumables[choice - 1]]
-        if character.hp >= character.max_hp:
+        if character.hp >= character.max_hp and not self._player_statuses.get("bleeding"):
             self.ui.write("You are already at full health.", color=Color.YELLOW)
             return False
         character.remove_item(item.item_id)
-        healed = character.heal(item.healing)
-        self.ui.write(f"You use {item.name} and recover {healed} Health.", color=Color.GREEN)
+        origin_bonus = 2 if character.origin == "healers_apprentice" else 0
+        healed = character.heal(item.healing + origin_bonus)
+        cured = bool(self._player_statuses.pop("bleeding", 0))
+        message = f"You use {item.name} and recover {healed} Health."
+        if cured:
+            message += " The Bleeding stops."
+        self.ui.write(message, color=Color.GREEN)
         return True
 
     def _inspect(self, enemy: Enemy) -> None:
-        self.ui.write(f"{enemy.name}: {enemy.hp}/{enemy.max_hp} Health, {enemy.armor} Armor", color=Color.CYAN)
+        intent = INTENTS.get(enemy.current_intent, INTENTS["strike"])
+        effective_armor = enemy.armor + (2 if enemy.statuses.get("guarded") else 0)
+        self.ui.write(
+            f"{enemy.name}: {enemy.hp}/{enemy.max_hp} Health, {effective_armor} Armor, Phase {enemy.phase}",
+            color=Color.CYAN,
+        )
+        self.ui.write(f"Intent — {intent.label}: {intent.telegraph}.", color=Color.YELLOW)
         if enemy.description:
             self.ui.narrate(enemy.description, color=Color.DIM)
 
@@ -199,19 +627,49 @@ class CombatEngine:
         self.ui.write(f"-- Round {round_number} --", color=Color.YELLOW, bold=True)
         self.ui.write(self.ui.meter("Health", character.hp, character.max_hp))
         self.ui.write(self.ui.meter("Focus", character.focus, character.max_focus, color=Color.CYAN))
+        player_effects = [name.title() for name, turns in self._player_statuses.items() if turns]
+        if player_effects:
+            self.ui.write("Effects: " + ", ".join(player_effects), color=Color.MAGENTA)
         for enemy in enemies:
-            if enemy.alive:
-                marker = " < TARGET" if enemy is target else ""
-                self.ui.write(self.ui.meter(enemy.name[:7], enemy.hp, enemy.max_hp, color=Color.RED) + marker)
+            if not enemy.alive:
+                continue
+            marker = " < TARGET" if enemy is target else ""
+            self.ui.write(self.ui.meter(enemy.name[:7], enemy.hp, enemy.max_hp, color=Color.RED) + marker)
+            intent = INTENTS.get(enemy.current_intent, INTENTS["strike"])
+            warning = " !" if intent.interruptible else ""
+            self.ui.write(f"  -> {intent.label}{warning}: {intent.telegraph}", color=Color.YELLOW)
+            effects = [name.title() for name, turns in enemy.statuses.items() if turns]
+            if effects:
+                self.ui.write("     " + ", ".join(effects), color=Color.DIM)
 
 
 def orc_scout(name: str = "Orc Scout") -> Enemy:
-    return Enemy(name, max_hp=9, hp=9, attack_min=3, attack_max=6, armor=0, description="Lean, rain-blackened, and eager to prove itself.")
+    return Enemy(
+        name,
+        max_hp=9,
+        hp=9,
+        attack_min=3,
+        attack_max=6,
+        armor=0,
+        description="Lean, rain-blackened, and dangerous when allowed time to aim.",
+        archetype="skirmisher",
+        intent_pattern=("strike", "aim", "quick"),
+    )
 
 
 def orc_captain(*, wounded: bool = False) -> Enemy:
     hp = 12 if wounded else 16
-    return Enemy("Orc Captain", max_hp=16, hp=hp, attack_min=4, attack_max=7, armor=1, description="A scarred Uruk with a curved sword and the red-eye brand.")
+    return Enemy(
+        "Orc Captain",
+        max_hp=16,
+        hp=hp,
+        attack_min=4,
+        attack_max=7,
+        armor=1,
+        description="A scarred Uruk who commands allies before committing to crushing blows.",
+        archetype="commander",
+        intent_pattern=("command", "strike", "heavy"),
+    )
 
 
 def marsh_warg() -> Enemy:
@@ -222,7 +680,9 @@ def marsh_warg() -> Enemy:
         attack_min=4,
         attack_max=7,
         armor=0,
-        description="A huge grey hunter, ribs striped with old spear scars and muzzle wet with marsh water.",
+        description="A huge grey hunter. Its pounce can be interrupted; its mauling jaws cause Bleeding.",
+        archetype="predator",
+        intent_pattern=("prowl", "pounce", "maul"),
     )
 
 
@@ -234,5 +694,9 @@ def ghorak() -> Enemy:
         attack_min=5,
         attack_max=8,
         armor=2,
-        description="The Orc commander who hunted Calenor. One gauntlet is crusted with pale ash and silver dust.",
+        description="The Orc commander changes tactics at half Health. His execution must be interrupted or guarded.",
+        archetype="boss",
+        intent_pattern=("command", "cleave", "brace", "heavy"),
+        phase_two_pattern=("menace", "cleave", "execution"),
+        phase_threshold=0.5,
     )

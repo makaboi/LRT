@@ -4,26 +4,29 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](#quick-start-on-macos)
+[![Quality Gate](https://github.com/makaboi/roads-beneath-the-shadow/actions/workflows/quality.yml/badge.svg)](https://github.com/makaboi/roads-beneath-the-shadow/actions/workflows/quality.yml)
 [![GitHub stars](https://img.shields.io/github/stars/makaboi/roads-beneath-the-shadow?style=social)](https://github.com/makaboi/roads-beneath-the-shadow/stargazers)
 
-**[Download the latest macOS release](https://github.com/makaboi/roads-beneath-the-shadow/releases/latest)**
+**[Download the latest macOS release](https://github.com/makaboi/roads-beneath-the-shadow/releases/latest)** — no installation and no Python required for the standalone build.
 
 *Roads Beneath the Shadow* is a story-driven terminal RPG set in Middle-earth during the War of the Ring. You play an unknown traveler whose guardian has vanished and whose quiet life ends when a dying messenger delivers a broken silver star.
 
 This repository contains the complete playable opening episode: **Part I — The Black Rider's Letter**. A normal playthrough is designed for roughly 45–70 minutes depending on reading speed, exploration, and combat choices.
 
 ```text
-                         .  *  .
-                         --|--
-     ____   ___    _    ____  ____
-    |  _ \ / _ \  / \  |  _ \/ ___|
-    | |_) | | | |/ _ \ | | | \___ \
-    |  _ <| |_| / ___ \| |_| |___) |
-    |_| \_\\___/_/   \_\____/|____/
-    +---------------------------------+
-    |      BENEATH THE SHADOW         |
-    +---------------------------------+
-          A TERMINAL ADVENTURE
+                         .
+                     .   |   .
+                 .       |       .
+              -----------*-----------
+                 '      /|\      '
+                    .--/ | \--.
+               _..-'   / \   '-.._
+           _.-'      _/   \_      '-._
+        .-'      _.-'       '-._      '-.
+       /____..--'      _._      '--..____\
+
+          R O A D S   B E N E A T H
+               T H E   S H A D O W
 ```
 
 **Play it, shape a different path, and compare your ending.** If you enjoy the journey, starring the repository helps other terminal-game and interactive-fiction players discover it.
@@ -32,42 +35,29 @@ This repository contains the complete playable opening episode: **Part I — The
 
 ## Quick start on macOS
 
-### What you need
-
-- macOS
-- Python 3.10 or newer
-- No extra packages or installation commands
-
-Check your Python version by opening Terminal and entering:
-
-```bash
-python3 --version
-```
-
-### 1. Download the game
+### Easiest method: standalone download
 
 1. Open the [latest release](https://github.com/makaboi/roads-beneath-the-shadow/releases/latest).
-2. Under **Assets**, download the file ending in `macOS.zip`.
+2. Under **Assets**, download `Roads-Beneath-the-Shadow-macOS-Apple-Silicon.zip` for an M-series Mac or `Roads-Beneath-the-Shadow-macOS-Intel.zip` for an Intel Mac.
 3. Open the downloaded ZIP file to create the `Roads-Beneath-the-Shadow` folder.
-
-### 2. Launch the game
-
-Open the `Roads-Beneath-the-Shadow` folder, then double-click:
+4. Open that folder and double-click:
 
 ```text
 Play Roads Beneath the Shadow.command
 ```
 
-A Terminal window will open at the game title screen. Choose **1** to begin a new journey.
+A Terminal window opens directly at the title screen. The standalone edition includes everything it needs.
 
-If macOS blocks the launcher the first time, Control-click the file, choose **Open**, then choose **Open** again.
+This independent build is not yet signed or notarized with an Apple Developer ID. If macOS blocks it, first try to open it once, then go to **System Settings > Privacy & Security**, scroll to **Security**, choose **Open Anyway**, and confirm **Open**. Only override this protection when you downloaded the file from this repository. See [Apple's current guidance](https://support.apple.com/102445).
 
-### Run from Terminal instead
+To launch the standalone executable from Terminal instead of double-clicking, enter `./Roads-Beneath-the-Shadow` inside its folder.
 
-If you downloaded the release ZIP, open Terminal and enter:
+### Run the source edition instead
+
+The source edition requires macOS and Python 3.10 or newer, but no third-party packages. Check Python with `python3 --version`. Download it through **Code > Download ZIP** on the repository page, open the ZIP, then enter:
 
 ```bash
-cd ~/Downloads/Roads-Beneath-the-Shadow
+cd ~/Downloads/roads-beneath-the-shadow-main
 python3 -m roads_beneath_shadow
 ```
 
@@ -84,10 +74,15 @@ python3 -m roads_beneath_shadow
 Add one of these options when launching from Terminal:
 
 ```bash
-python3 -m roads_beneath_shadow --sound     # turn on terminal bell sound cues
-python3 -m roads_beneath_shadow --no-color  # use plain text without ANSI colors
-python3 -m roads_beneath_shadow --fast      # remove dramatic text pauses
+python3 -m roads_beneath_shadow --sound
+python3 -m roads_beneath_shadow --no-color
+python3 -m roads_beneath_shadow --text-speed fast
+python3 -m roads_beneath_shadow --reduced-motion
+python3 -m roads_beneath_shadow --screen-reader
+python3 -m roads_beneath_shadow --difficulty story
 ```
+
+These command-line options apply to that launch only. Set the same preferences from the in-game **Settings** menu to remember them between launches. Difficulty choices are **Story**, **Ranger** (the intended balance), and **Shadow**.
 
 ### Troubleshooting
 
@@ -95,6 +90,8 @@ python3 -m roads_beneath_shadow --fast      # remove dramatic text pauses
 - **The launcher says “Permission denied”** — run `chmod +x "Play Roads Beneath the Shadow.command"` inside the game folder, then open it again.
 - **The downloaded folder has a different name** — type `cd ` in Terminal, drag the folder into the Terminal window, press Return, then run `python3 -m roads_beneath_shadow`.
 - **Text colors are difficult to read** — launch with `python3 -m roads_beneath_shadow --no-color`.
+- **Animation is uncomfortable or distracting** — enable **Reduced motion** in Settings or use `--reduced-motion`.
+- **You use a screen reader** — enable **Screen-reader mode** to replace decorative art with concise scene descriptions.
 
 ## Current features
 
@@ -103,13 +100,19 @@ python3 -m roads_beneath_shadow --fast      # remove dramatic text pauses
 - Explorable Bree locations and a multi-room North-kingdom wayhouse
 - Substantive conversations with Mara and watchman Tobin Reed
 - A complete rescue quest whose outcome carries into the finale
-- Three tactical encounters: the Pony defense, Midgewater ambush, and Ghorak battle
-- Turn-based combat with target selection, companion commands, Focus, defense, armor, healing, and encounter objectives
+- Three tactical encounters: the Pony defense, Midgewater ambush, and a two-phase battle with Ghorak Ash-Hand
+- Telegraphed enemy intentions, target selection, interrupts, status effects, Focus, defense, armor, healing, and encounter objectives
+- A distinct combat ability for each background, plus different tactical commands for Mara and Tobin
 - Inventory, consumable items, and equipment management
-- Three versioned save/load slots with migration and safe atomic writes
+- Story, Ranger, and Shadow combat difficulty modes; Shadow rewards interrupts, defense, and companion tactics instead of damage-racing
+- Three versioned save/load slots with migration, strict validation, and safe atomic writes
 - Persistent hope, corruption, clues, companion trust, quest outcomes, and Part II state
-- Compact retro ASCII scenes, restrained ANSI color, and optional sound cues
-- A full dramatic ending and Black Rider cliffhanger leading into Part II
+- Four causally different endings and an explicit recap of the choices that created yours
+- A persistent Traveler's Chronicle with ending records and seven achievements
+- Cinematic retro ASCII scenes, restrained ANSI color, two subtle animations, and original optional sound cues
+- Adjustable narration speed, reduced motion, narrow-terminal handling, and screen-reader scene descriptions
+- Number keys, W/S, and arrow-key menu navigation
+- A full dramatic ending and Black Rider cliffhanger leading into Part II: *The Dead Road*
 - Platform-neutral story and combat logic for future Windows Terminal support
 
 Save files are stored in:
@@ -120,12 +123,17 @@ Save files are stored in:
 
 Set `RBS_SAVE_DIR` to use a different save location.
 
+Settings and Chronicle progress are stored beside the `saves` folder. Completed journeys have stable IDs, so reopening an ending save cannot duplicate its Chronicle credit.
+
 ## Controls
 
 Menus use numbered choices. During story decisions:
 
 | Key | Action |
 | --- | --- |
+| `1`–`9` | Choose a menu or story option |
+| `W` / `S`, arrows | Move through supported menus |
+| `Return` / `D` | Confirm the highlighted menu choice |
 | `I` | Open inventory and equipment |
 | `C` | Show character status |
 | `J` | Read quests and clues |
@@ -146,16 +154,20 @@ The code is split into portable systems:
 - `combat.py` — turn-based encounters
 - `models.py` — character, enemy, and serialized game state
 - `savegame.py` — save slots and atomic file handling
-- `ui.py` — terminal input, color, layout, and sound
-- `content.py` — items, backgrounds, artwork, and static chapter content
+- `ui.py` — terminal input, animation, accessibility, color, and layout
+- `artwork.py` — the unified retro scene-art collection
+- `audio.py` — optional original macOS sound-cue playback
+- `profile.py` — Chronicle and achievement progress
+- `settings.py` — persistent presentation and difficulty preferences
+- `content.py` — items, backgrounds, and static chapter content
 
 ## Roadmap
 
 1. Part II — The Dead Road
-2. Companion combat abilities and relationship scenes
-3. More equipment, conditions, and enemy behaviors
-4. Expanded settings and accessibility controls
-5. Windows Terminal launcher and compatibility verification
+2. Additional companion relationship routes and camp scenes
+3. More equipment sets, rare conditions, and enemy archetypes
+4. Native Windows Terminal launcher and full compatibility verification
+5. Optional signed macOS application bundle
 
 ## Support the journey
 
