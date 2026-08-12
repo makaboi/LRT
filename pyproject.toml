@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roads-beneath-the-shadow"
+version = "0.1.0"
+description = "A story-driven terminal RPG set in Middle-earth."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "All rights reserved" }
+authors = [{ name = "makaboi" }]
+dependencies = []
+
+[project.scripts]
+roads-beneath-shadow = "roads_beneath_shadow.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["roads_beneath_shadow*"]
+
+[tool.unittest]
+start-directory = "tests"
