@@ -75,6 +75,32 @@ def social_preview() -> Image.Image:
     return image
 
 
+def itch_cover() -> Image.Image:
+    """Build itch.io's recommended 630x500 cover image."""
+    width, height = 630, 500
+    image = Image.new("RGB", (width, height), "#080c0f")
+    draw = ImageDraw.Draw(image, "RGBA")
+    rng = random.Random(1937)
+
+    for _ in range(140):
+        x = rng.randrange(width)
+        y = rng.randrange(height)
+        alpha = rng.randrange(18, 65)
+        draw.point((x, y), fill=(181, 199, 189, alpha))
+
+    draw.rectangle((16, 16, width - 17, height - 17), outline=GOLD, width=3)
+    draw.rectangle((26, 26, width - 27, height - 27), outline="#304239", width=1)
+    draw.polygon(star_points(width / 2, 104, 34, 11), fill=SILVER, outline="#f0f4f2")
+    centered(draw, "A RETRO TERMINAL RPG", 48, font(18), GREEN, width)
+    centered(draw, "ROADS", 160, font(70), INK, width)
+    centered(draw, "BENEATH", 248, font(42), GOLD, width)
+    centered(draw, "THE SHADOW", 302, font(42), GOLD, width)
+    centered(draw, "THE ROAD REMEMBERS.", 390, font(18), SILVER, width)
+    centered(draw, "PART I  //  macOS", 432, font(16), MUTED, width)
+    add_scanlines(image, 5)
+    return image
+
+
 SCENES: list[tuple[str, list[tuple[str, str]]]] = [
     (
         "TITLE SCREEN",
@@ -227,6 +253,7 @@ def contact_sheet(frames: list[Image.Image]) -> Image.Image:
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     social_preview().save(OUTPUT_DIR / "social-preview.png", optimize=True)
+    itch_cover().save(OUTPUT_DIR / "itch-cover.png", optimize=True)
 
     frames, durations = gameplay_gif()
     frames[0].save(
@@ -238,6 +265,14 @@ def main() -> None:
         optimize=True,
         disposal=2,
     )
+    screenshot_dir = OUTPUT_DIR / "screenshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    for filename, scene_index in (
+        ("story.png", 1),
+        ("combat.png", 3),
+        ("cliffhanger.png", 5),
+    ):
+        gameplay_frame(scene_index, 1.0, False).save(screenshot_dir / filename, optimize=True)
     contact_sheet(frames).save("/private/tmp/roads-gameplay-contact-sheet.png", optimize=True)
 
 
