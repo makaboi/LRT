@@ -4,24 +4,71 @@
 
 This repository contains the complete playable opening episode: **Part I — The Black Rider's Letter**. A normal playthrough is designed for roughly 45–70 minutes depending on reading speed, exploration, and combat choices.
 
-## Play on macOS
+## Quick start on macOS
 
-You need Python 3.10 or newer. The game has no third-party dependencies.
+### What you need
 
-Double-click `Play Roads Beneath the Shadow.command`, or launch it from Terminal:
+- macOS
+- Python 3.10 or newer
+- No extra packages or installation commands
+
+Check your Python version by opening Terminal and entering:
 
 ```bash
-cd "/path/to/LRT"
+python3 --version
+```
+
+### 1. Download the game
+
+1. Click the green **Code** button near the top of this GitHub page.
+2. Click **Download ZIP**.
+3. Open the downloaded ZIP file to create the `LRT-main` folder.
+
+### 2. Launch the game
+
+Open the `LRT-main` folder, then double-click:
+
+```text
+Play Roads Beneath the Shadow.command
+```
+
+A Terminal window will open at the game title screen. Choose **1** to begin a new journey.
+
+If macOS blocks the launcher the first time, Control-click the file, choose **Open**, then choose **Open** again.
+
+### Run from Terminal instead
+
+If you downloaded the ZIP file, open Terminal and enter:
+
+```bash
+cd ~/Downloads/LRT-main
 python3 -m roads_beneath_shadow
 ```
 
-Optional launch flags:
+If you use Git, you can clone and launch the game with:
 
 ```bash
-python3 -m roads_beneath_shadow --sound     # terminal bell sound cues
-python3 -m roads_beneath_shadow --no-color  # plain text output
-python3 -m roads_beneath_shadow --fast      # remove dramatic pauses
+git clone https://github.com/makaboi/LRT.git
+cd LRT
+python3 -m roads_beneath_shadow
 ```
+
+### Optional launch settings
+
+Add one of these options when launching from Terminal:
+
+```bash
+python3 -m roads_beneath_shadow --sound     # turn on terminal bell sound cues
+python3 -m roads_beneath_shadow --no-color  # use plain text without ANSI colors
+python3 -m roads_beneath_shadow --fast      # remove dramatic text pauses
+```
+
+### Troubleshooting
+
+- **`python3: command not found`** — install Python 3.10 or newer, then reopen Terminal.
+- **The launcher says “Permission denied”** — run `chmod +x "Play Roads Beneath the Shadow.command"` inside the game folder, then open it again.
+- **The downloaded folder has a different name** — type `cd ` in Terminal, drag the folder into the Terminal window, press Return, then run `python3 -m roads_beneath_shadow`.
+- **Text colors are difficult to read** — launch with `python3 -m roads_beneath_shadow --no-color`.
 
 ## Current features
 
