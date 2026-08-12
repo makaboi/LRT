@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 — Identifiable Terminal Art
+
+- Rebuilt the Orc attack, tracker, Marsh Warg, Ghorak, final battle, and Black Rider scenes around sparse, recognizable anatomy and props.
+- Replaced the dense Rider block with an outlined horse and mounted figure, and tightened the Warg around clear eyes, muzzle, nose, and fangs.
+- Added unlabeled, actual-size visual recognition checks during design and structural regression tests for every action sprite.
+- Gave the North wayhouse its own exterior art so the final battle is no longer shown before the climax.
+- Refreshed the gameplay animation and combat and cliffhanger screenshots.
+
 ## 0.2.1 — Readable Retro Art
 
 - Replaced ambiguous symbol wedges with outlined, recognizable retro sprites.

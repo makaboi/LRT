@@ -14,6 +14,7 @@ from .artwork import (
     MARSH_WARG_INTRO_ART,
     MIDGEWATER_RUINS_ART,
     NORTH_GATE_ART,
+    NORTH_WAYHOUSE_ART,
     ORC_ATTACK_ART,
     ORC_TRACKER_INTRO_ART,
     PRANCING_PONY_EXTERIOR_ART,
@@ -1337,7 +1338,7 @@ class Game:
                     "arrival all through the hill. Mara says nothing about stealth; none remains."
                 )
             self.ui.art(
-                FINAL_RUINS_BATTLE_ART,
+                NORTH_WAYHOUSE_ART,
                 Color.BLUE,
                 alt_text="Moonlight cuts across the shattered arches of an ancient northern fortress.",
             )

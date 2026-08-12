@@ -5,6 +5,24 @@ props over abstract silhouettes.  They stay within a 64-column stage so every
 subject remains legible in a standard macOS Terminal window.
 """
 
+import textwrap
+
+
+def _named_ascii_art(source: str, title: str) -> str:
+    """Validate and title a sparse hand-drawn sprite without changing its shape."""
+
+    body = textwrap.dedent(source).strip("\n")
+    lines = body.splitlines()
+    if not lines or not body.isascii():
+        raise ValueError("ASCII sprite bodies must be non-empty portable ASCII")
+    if any("\t" in line or len(line) > 64 for line in lines):
+        raise ValueError("ASCII sprite bodies must fit a 64-column terminal stage")
+    width = max(len(line) for line in lines)
+    nameplate = f"[ {title} ]"
+    if len(nameplate) > width:
+        raise ValueError("sprite nameplate is wider than its body")
+    return "\n" + nameplate.center(width) + "\n" + body + "\n"
+
 
 class AnimatedArtwork(str):
     """A string-compatible still image with optional restrained motion frames."""
@@ -91,25 +109,22 @@ PRANCING_PONY_INTERIOR_ART = r"""
 """
 
 
-ORC_ATTACK_ART = r"""
-             .----------[ ORC ATTACK ]----------.
-  .-----------.         ----->
-  | \   |   / |
-  |  \  |  /  |          <=====\  O  /=====>
-  |---\-X-/---|                 \-|-/
-  |  /  |  \  |                   |
-  | /   |   \ |                  / \
-  '-----------'
-
-                       __/^^\__   __/^^\__   __/^^\__
-                     <| o    o |><| o    o |><| o    o |>
-                       \ V  V /    \ V  V /    \ V  V /
-                        \_==_/      \_==_/      \_==_/
-                        __|__        __|__        __|__
-                     __/  |  \__  __/  |  \__  __/  |  \__
-                        _/ \_        _/ \_        _/ \_
- ______________________/_____\______/_____\______/_____\___
+ORC_ATTACK_SPRITE = r"""
+                        ___________
+    /)                 <____/ \____>                       (\
+   //                       |                               \\
+  //    _/\_              _/\_                      _/\_    \\
+ //   _<o  o>_          _<o  o>_                  _<o  o>_   \\
+//   <   ^^   >        <   ^^   >                <   ^^   >  //
+\\    \_====_/          \_====_/                  \_====_/ //
+ \\_____/|[]|\_        __/|[]|\__                  _/|[]|\_//
+  \____  |  |  \      /  /|  |\  \                /  |  |  _/
+       /  |__|   >   <__/ |__| \__>              <   |__|  \
+      /   /  \           _/  \_                      /  \  \
+    _/  _/ /\ \_       _/ /\/\ \_                  _/ /\ \_ \
+   /___/__/  \___\    /__/    \__\                /__/  \___\ \
 """
+ORC_ATTACK_ART = _named_ascii_art(ORC_ATTACK_SPRITE, "ORC ATTACK")
 
 
 BREE_STREETS_ART = r"""
@@ -178,6 +193,21 @@ MIDGEWATER_RUINS_ART = r"""
 """
 
 
+NORTH_WAYHOUSE_ART = r"""
+              /\                         /\
+         ____/  \____               ____/  \____
+        | []      [] |_____________| []      [] |
+        |            |             |            |
+        |   .----.        /\        .----.     |
+   _____|__/      \______/  \______/      \____|_____
+        |              _/____\_              |
+        |    ____     |  ||  |     ____     |
+        |___/    \____|__||__|____/    \____|
+             \       /   ||   \       /
+              \_____/____||____\_____/
+"""
+
+
 ANCIENT_ROAD_DISCOVERY_ART = r"""
                    _..----------------.._
                _.-'                      '-._
@@ -198,121 +228,118 @@ ANCIENT_ROAD_DISCOVERY_ART = r"""
 """
 
 
-ORC_TRACKER_INTRO_ART = r"""
-              .---------[ ORC TRACKER ]---------.
-                         __/^^^^\__
-                       <|  o    o  |>
-                        |    /\    |
-                         \  V  V  /
-                          \__==__/
-                           __|__
-                       ___/  |  \___
-                      /      |      \o===================>
-                     /       |       \
-                            / \
-                         __/   \__
-             \|/        /__     __\       \|/
-~~~~~~~~~~~~~~|~~~~~~~~~~~~|~~~~|~~~~~~~~~~~|~~~~~~~~~~~~~~
-             / \          /      \         / \
+ORC_TRACKER_SPRITE = r"""
+                  _/\_
+                _<o  o>_
+               <   ^^   >
+                \_^==^_/
+             ___/|_[]_|\___
+            /   (|    |)   \
+<===============(|____|)===============================|>
+                _/ /\ \_
+            ___/  /  \  \___
+           /_____/    \_____\
 """
+ORC_TRACKER_INTRO_ART = _named_ascii_art(ORC_TRACKER_SPRITE, "ORC TRACKER")
 
 
-MARSH_WARG_INTRO_ART = r"""
-              .---------[ MARSH WARG ]---------.
-                       /\       /\
-                      /  \_____/  \
-                     /             \
-                    /   /\     /\   \
-                   |   / o\   /o \   |
-                   |       \_/       |
-                   |       / \       |
-                   |    __/   \__    |
-                    \  / V V V V \  /
-                     \_\_________/_/
-                       /|       |\
-                  ____/ |       | \____
- ~~~~~~~~~~~~~~~~~/_____|       |_____\~~~~~~~~~~~~~~~~
+MARSH_WARG_SPRITE = r"""
+          /\_______________________________/\
+         /                                   \
+        /        \                   /        \
+       /          \__  o       o  __/          \
+      /              \___________/              \
+     /                                             \
+     \                  /\                       /
+      \               _/  \_                    /
+       \             /      \                  /
+        \           /   @@   \                /
+         \         /  /\/\/\  \              /
+          \_______/  V  V  V   \____________/
+                   \____________/
 """
+MARSH_WARG_INTRO_ART = _named_ascii_art(MARSH_WARG_SPRITE, "MARSH WARG")
 
 
-GHORAK_ASH_HAND_INTRO_ART = r"""
-             .-------[ GHORAK ASH-HAND ]-------.
-                       __/^^^^\__
-                     <|  o    o  |>
-                      |    /\    |
-                       \  V  V  /
-                        \__==__/
-                      ____/===\____
-                 (@)==/  | [] |   \==o======\_______________
-                     /___|====|____\          \______________\
-                        /|    |\
-                       / |====| \
-                      /__|____|__\
-                        /      \
-                     __/        \__
-                    /___\        /___\
- _________________ /_____\______/_____\_____________________
+GHORAK_ASH_HAND_SPRITE = r"""
+                     ______________________
+              (@)===|______________________\
+               |
+          __/^^|\__
+        <| o   |  o |>
+         |    /\    |
+          \  V  V  /
+           \__==__/
+        ____/||||\____
+      _/    ||||||    \_
+     /______||||||______\
+        ___/      \___
+_______/______________\____________________
 """
+GHORAK_ASH_HAND_INTRO_ART = _named_ascii_art(
+    GHORAK_ASH_HAND_SPRITE,
+    "GHORAK ASH-HAND",
+)
 
 
-FINAL_RUINS_BATTLE_ART = r"""
- .--------------[ FINAL BATTLE ]---------------.
- |                    \ | /                     |
- |                  --- * ---                   |
- |                    / | \                     |
- |             .--------+--------.              |
- |     __/^^\__|                 |    O   O   O |
- |   <| o    o ||                 |  --|> <|> <|--|
- |     \ V  V /|                 |    /\  /\  /\ |
- |      \_==_/ |_________________|              |
- |    ____/|\____o======\____________           |
- |   /    / \    \       \___________\          |
- |  /____/   \____\                              |
- |_____/_____\___________________________________|
- '------------------------------------------------'
+FINAL_RUINS_BATTLE_SPRITE = r"""
+          _______
+      ___/^^^^^^^\___                         \   O   /
+    <|  o       o  |>                         \--|--/
+     |      /\     |                             |
+      \   V  V   /                             / \
+       \___==___/                  O           /___\        O
+      ___/|||||\___            ---/|\---                   -/|\-
+   __/    |||||    \__           / \                      / \
+ _/_______|||||_______\_        _/___\_                  _/___\_
+         /     \
+        /       \       =====================================>
+_______/_________\_____________________________________________
 """
+FINAL_RUINS_BATTLE_ART = _named_ascii_art(
+    FINAL_RUINS_BATTLE_SPRITE,
+    "FINAL BATTLE",
+)
 
 
-BLACK_RIDER_CLIFFHANGER_STILL = r"""
-             .---------[ BLACK RIDER ]---------.
-      .       |       .
-   -----------*-----------
-           /  |  \
-
-                       .-------.
-                      /##   ##\
-                     |#       #|
-                      \##___##/
-                        /# #\
-                   ____/  #  \____o================>
-                        |# #|
-                       /  #  \
-                      / # | # \
-                    _/___| |___\_
-                         /   \
- _______________________/_____\____________________
+BLACK_RIDER_SPRITE = r"""
+        .       |       .
+     -----------*-----------
+             /  |  \
+                 .-^^^^-.
+                / o    o \
+                \   __   /
+                 \_/||\_/
+            __     /||\          /\
+        ___/  \___/ || \________/  \__
+      _/              __           o   \
+     /       _________/  \________/\   |
+    /_______/                      / \__|
+       /   \                      /   \
+      /     \                    /     \
+    _/       \_                _/       \_
+ __/___________\______________/___________\__
 """
-
-
-BLACK_RIDER_STAR_DIM_ART = r"""
-             .---------[ BLACK RIDER ]---------.
-              |
-           ---+---
-              |
-
-                       .-------.
-                      /##   ##\
-                     |#       #|
-                      \##___##/
-                        /# #\
-                   ____/  #  \____o================>
-                        |# #|
-                       /  #  \
-                      / # | # \
-                    _/___| |___\_
-                         /   \
- _______________________/_____\____________________
+BLACK_RIDER_DIM_SPRITE = r"""
+                |
+             ---+---
+                |
+                 .-^^^^-.
+                / o    o \
+                \   __   /
+                 \_/||\_/
+            __     /||\          /\
+        ___/  \___/ || \________/  \__
+      _/              __           o   \
+     /       _________/  \________/\   |
+    /_______/                      / \__|
+       /   \                      /   \
+      /     \                    /     \
+    _/       \_                _/       \_
+ __/___________\______________/___________\__
 """
+BLACK_RIDER_CLIFFHANGER_STILL = _named_ascii_art(BLACK_RIDER_SPRITE, "BLACK RIDER")
+BLACK_RIDER_STAR_DIM_ART = _named_ascii_art(BLACK_RIDER_DIM_SPRITE, "BLACK RIDER")
 
 
 BLACK_RIDER_CLIFFHANGER_FRAMES = (
