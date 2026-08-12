@@ -28,6 +28,8 @@ This repository contains the complete playable opening episode: **Part I — The
 
 **Play it, shape a different path, and compare your ending.** If you enjoy the journey, starring the repository helps other terminal-game and interactive-fiction players discover it.
 
+![Gameplay preview showing the title, Prancing Pony, tactical choices, combat, discoveries, and Part I cliffhanger](assets/gameplay-demo.gif)
+
 ## Quick start on macOS
 
 ### What you need
