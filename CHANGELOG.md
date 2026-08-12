@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — Readable Retro Art
+
+- Replaced ambiguous symbol wedges with outlined, recognizable retro sprites.
+- Added clear encounter nameplates for Orcs, the Marsh Warg, Ghorak, the final battle, and the Black Rider.
+- Redrew the Prancing Pony, inn interior, Bree, North Gate, third stone, Midgewater ruins, and buried road.
+- Added artwork legibility checks for visual density, negative space, anatomy landmarks, weapons, and terminal width.
+- Refreshed the GitHub gameplay animation and screenshots with the new art.
+
 ## 0.2.0 — Definitive Edition
 
 This release rebuilds Part I around clearer terminal art, more tactical combat, stronger consequences, and a smoother macOS launch.

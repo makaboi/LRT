@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from roads_beneath_shadow.artwork import (  # noqa: E402
     BLACK_RIDER_CLIFFHANGER_ART,
-    MIDGEWATER_RUINS_ART,
+    MARSH_WARG_INTRO_ART,
     ORC_ATTACK_ART,
     PRANCING_PONY_EXTERIOR_ART,
     THIRD_STONE_DISCOVERY_ART,
@@ -146,7 +146,7 @@ SCENES: list[tuple[str, list[tuple[str, str]]]] = [
     ),
     (
         "ENCOUNTER — MIDGEWATER AMBUSH",
-        art_rows(MIDGEWATER_RUINS_ART, MUTED)
+        art_rows(MARSH_WARG_INTRO_ART, MUTED)
         + [
             ("YOU        HP 24/30   FOCUS 2/3", GREEN),
             ("MARSH WARG  HP 15/21   INTENT: POUNCE", RED),

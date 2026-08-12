@@ -1551,7 +1551,7 @@ class Game:
             "The floor splits along lines of silver. Far below, a man cries out. You know Calenor's "
             "voice even through stone and years of fear.\n\n"
             '"Do not bring the star to me!" he shouts. "It was never a key. It is the last seal."\n\n'
-            "The Rider dismounts. Behind you, the only passage back to daylight fills with shadow. "
+            "The Rider draws a long blade. Behind you, the only passage back to daylight fills with shadow. "
             "Before you, stairs descend beneath the Weather Hills toward Calenor, the broken crown, "
             "and the truth of the night he found you."
         )
