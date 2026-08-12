@@ -6,6 +6,8 @@
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](#quick-start-on-macos)
 [![GitHub stars](https://img.shields.io/github/stars/makaboi/roads-beneath-the-shadow?style=social)](https://github.com/makaboi/roads-beneath-the-shadow/stargazers)
 
+**[Download the latest macOS release](https://github.com/makaboi/roads-beneath-the-shadow/releases/latest)**
+
 *Roads Beneath the Shadow* is a story-driven terminal RPG set in Middle-earth during the War of the Ring. You play an unknown traveler whose guardian has vanished and whose quiet life ends when a dying messenger delivers a broken silver star.
 
 This repository contains the complete playable opening episode: **Part I — The Black Rider's Letter**. A normal playthrough is designed for roughly 45–70 minutes depending on reading speed, exploration, and combat choices.
@@ -42,13 +44,13 @@ python3 --version
 
 ### 1. Download the game
 
-1. Click the green **Code** button near the top of this GitHub page.
-2. Click **Download ZIP**.
-3. Open the downloaded ZIP file to create the `roads-beneath-the-shadow-main` folder.
+1. Open the [latest release](https://github.com/makaboi/roads-beneath-the-shadow/releases/latest).
+2. Under **Assets**, download the file ending in `macOS.zip`.
+3. Open the downloaded ZIP file to create the `Roads-Beneath-the-Shadow` folder.
 
 ### 2. Launch the game
 
-Open the `roads-beneath-the-shadow-main` folder, then double-click:
+Open the `Roads-Beneath-the-Shadow` folder, then double-click:
 
 ```text
 Play Roads Beneath the Shadow.command
@@ -60,10 +62,10 @@ If macOS blocks the launcher the first time, Control-click the file, choose **Op
 
 ### Run from Terminal instead
 
-If you downloaded the ZIP file, open Terminal and enter:
+If you downloaded the release ZIP, open Terminal and enter:
 
 ```bash
-cd ~/Downloads/roads-beneath-the-shadow-main
+cd ~/Downloads/Roads-Beneath-the-Shadow
 python3 -m roads_beneath_shadow
 ```
 
