@@ -1,8 +1,30 @@
 # The Lord of the Rings: Roads Beneath the Shadow
 
+> A retro, choice-driven terminal RPG where trust, clues, and corruption reshape the road ahead.
+
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](#quick-start-on-macos)
+[![GitHub stars](https://img.shields.io/github/stars/makaboi/roads-beneath-the-shadow?style=social)](https://github.com/makaboi/roads-beneath-the-shadow/stargazers)
+
 *Roads Beneath the Shadow* is a story-driven terminal RPG set in Middle-earth during the War of the Ring. You play an unknown traveler whose guardian has vanished and whose quiet life ends when a dying messenger delivers a broken silver star.
 
 This repository contains the complete playable opening episode: **Part I — The Black Rider's Letter**. A normal playthrough is designed for roughly 45–70 minutes depending on reading speed, exploration, and combat choices.
+
+```text
+                         .  *  .
+                         --|--
+     ____   ___    _    ____  ____
+    |  _ \ / _ \  / \  |  _ \/ ___|
+    | |_) | | | |/ _ \ | | | \___ \
+    |  _ <| |_| / ___ \| |_| |___) |
+    |_| \_\\___/_/   \_\____/|____/
+    +---------------------------------+
+    |      BENEATH THE SHADOW         |
+    +---------------------------------+
+          A TERMINAL ADVENTURE
+```
+
+**Play it, shape a different path, and compare your ending.** If you enjoy the journey, starring the repository helps other terminal-game and interactive-fiction players discover it.
 
 ## Quick start on macOS
 
@@ -22,11 +44,11 @@ python3 --version
 
 1. Click the green **Code** button near the top of this GitHub page.
 2. Click **Download ZIP**.
-3. Open the downloaded ZIP file to create the `LRT-main` folder.
+3. Open the downloaded ZIP file to create the `roads-beneath-the-shadow-main` folder.
 
 ### 2. Launch the game
 
-Open the `LRT-main` folder, then double-click:
+Open the `roads-beneath-the-shadow-main` folder, then double-click:
 
 ```text
 Play Roads Beneath the Shadow.command
@@ -41,15 +63,15 @@ If macOS blocks the launcher the first time, Control-click the file, choose **Op
 If you downloaded the ZIP file, open Terminal and enter:
 
 ```bash
-cd ~/Downloads/LRT-main
+cd ~/Downloads/roads-beneath-the-shadow-main
 python3 -m roads_beneath_shadow
 ```
 
 If you use Git, you can clone and launch the game with:
 
 ```bash
-git clone https://github.com/makaboi/LRT.git
-cd LRT
+git clone https://github.com/makaboi/roads-beneath-the-shadow.git
+cd roads-beneath-the-shadow
 python3 -m roads_beneath_shadow
 ```
 
@@ -130,5 +152,11 @@ The code is split into portable systems:
 3. More equipment, conditions, and enemy behaviors
 4. Expanded settings and accessibility controls
 5. Windows Terminal launcher and compatibility verification
+
+## Support the journey
+
+- [Star the repository](https://github.com/makaboi/roads-beneath-the-shadow) if you want Part II to reach more players.
+- [Report a bug](https://github.com/makaboi/roads-beneath-the-shadow/issues) if something interrupts your adventure.
+- Share your background, major choices, and ending without spoiling the path for new players.
 
 This is an unofficial fan project. Middle-earth and *The Lord of the Rings* are the property of their respective rights holders.
